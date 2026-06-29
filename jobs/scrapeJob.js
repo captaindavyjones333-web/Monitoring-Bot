@@ -10,11 +10,19 @@ async function runScraper(fn, source) {
   try {
     console.log(`[scrape] Scraping ${source}...`);
     const products = await fn();
+    if (!products || products.length === 0) {
+      console.warn(
+        `[scrape] ⚠️  ${source}: no products returned, keeping old cache`,
+      );
+      return;
+    }
     saveCache(source, products);
     markUpdated(source);
     console.log(`[scrape] ✅ ${source}: ${products.length} products saved`);
   } catch (err) {
-    console.error(`[scrape] ❌ ${source} failed:`, err.message);
+    console.error(
+      `[scrape] ❌ ${source} failed: ${err.message} — keeping old cache`,
+    );
   }
 }
 

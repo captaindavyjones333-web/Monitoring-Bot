@@ -6,15 +6,15 @@ import { runSendJob, resetPreviousAlerts } from "./jobs/sendJob.js";
 import { sendAlerts } from "./bot/bot.js";
 
 // ─── Keep-alive HTTP server for Render free tier ──────────────────────────────
-const server = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end("Bot is running");
-});
-server.listen(process.env.PORT || 3000, () => {
-  console.log(
-    `[server] 🌐 Keep-alive server on port ${process.env.PORT || 3000}`,
-  );
-});
+const PORT = process.env.PORT || 3000;
+http
+  .createServer((req, res) => {
+    res.writeHead(200);
+    res.end("Bot is running");
+  })
+  .listen(PORT, "0.0.0.0", () => {
+    console.log(`[server] 🌐 Listening on port ${PORT}`);
+  });
 
 // ─── 06:00 AM — Scrape all sites ─────────────────────────────────────────────
 cron.schedule(
