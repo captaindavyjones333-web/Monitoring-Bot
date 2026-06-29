@@ -116,7 +116,7 @@ export function buildComparisons(groups) {
       const label = SOURCE_LABELS[source];
 
       if (!entry) {
-        lines.push(`${label} - н/д`);
+        lines.push(`${label} - Առկա չէ`);
         continue;
       }
 

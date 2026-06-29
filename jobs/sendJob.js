@@ -26,17 +26,20 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
 
   let messagesToSend = alertMessages;
 
+  const getKey = (msg) =>
+    msg
+      .replace(/^\d+\.\s*/, "")
+      .split("\n")[0]
+      .trim();
+
   if (onlyNew) {
-    // Filter to only alerts not seen before (use first line as key)
-    messagesToSend = alertMessages.filter(msg => {
-      const key = msg.split("\n")[0]; // e.g. "*iPhone 17 Pro 256GB*"
-      return !previousAlertKeys.has(key);
-    });
+    messagesToSend = alertMessages.filter(
+      (msg) => !previousAlertKeys.has(getKey(msg)),
+    );
     console.log(`[send] 🆕 ${messagesToSend.length} new alerts`);
   }
 
-  // Update previous alert keys
-  previousAlertKeys = new Set(alertMessages.map(msg => msg.split("\n")[0]));
+  previousAlertKeys = new Set(alertMessages.map((msg) => getKey(msg)));
 
   if (clearAfter) {
     clearAllCaches();
