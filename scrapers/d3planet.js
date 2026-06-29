@@ -245,17 +245,18 @@ export async function scrape3DPlanet() {
 
   console.log(`[3d] ${unique.length} unique products, fetching details...`);
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--single-process",
-      "--no-zygote",
-    ],
-  });
+const browser = await puppeteer.launch({
+  headless: true,
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--no-first-run",
+  ],
+});
   const puppeteerPage = await browser.newPage();
   await puppeteerPage.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
@@ -288,8 +289,3 @@ export async function scrape3DPlanet() {
   console.log(`[3d] Total unique products: ${result.length}`);
   return result;
 }
-
-// Auto-execute when run directly
-const products = await scrape3DPlanet();
-saveCache("3dplanet", products);
-markUpdated("3dplanet");

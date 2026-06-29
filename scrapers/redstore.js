@@ -90,7 +90,3 @@ export async function scrapeRedstore() {
 
   return results;
 }
-
-const products = await scrapeRedstore();
-saveCache("redstore", products);
-markUpdated("redstore");

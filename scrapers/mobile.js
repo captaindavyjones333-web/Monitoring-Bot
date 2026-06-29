@@ -214,8 +214,9 @@ export async function scrapeMobileCentre() {
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
-      "--single-process",
-      "--no-zygote",
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--no-first-run",
     ],
   });
   const page = await browser.newPage();
@@ -258,6 +259,3 @@ export async function scrapeMobileCentre() {
   }
 }
 
-const products = await scrapeMobileCentre();
-saveCache("mobilecentre", products);
-markUpdated("mobilecentre");
