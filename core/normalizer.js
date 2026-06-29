@@ -1,0 +1,245 @@
+// normalizer.js
+
+const COLORS = [
+  "midnight",
+  "starlight",
+  "ultramarine",
+  "teal",
+  "coral",
+  "graphite",
+  "alpine",
+  "storm",
+  "clay",
+  "lavender",
+  "mint",
+  "sage",
+  "sierrablue",
+  "desert",
+  "gold",
+  "silver",
+  "titanium",
+  "natural",
+  "blue",
+  "black",
+  "white",
+  "red",
+  "green",
+  "yellow",
+  "purple",
+  "pink",
+  "navy",
+  "orange",
+  "space gray",
+  "space grey",
+  "sierra blue",
+  "alpine green",
+  "alpine blue",
+  "deep purple",
+  "deep blue",
+  "cosmic orange",
+  "cosmic",
+  "deep",
+  "mocha",
+  "brown",
+  "beige",
+  "cream",
+  "violet",
+  "bronze",
+];
+
+const MULTIWORD_COLORS = [
+  "space gray",
+  "space grey",
+  "sierra blue",
+  "alpine green",
+  "alpine blue",
+  "deep purple",
+  "deep blue",
+  "product red",
+  "sky blue",
+  "desert titanium",
+  "black titanium",
+  "white titanium",
+  "natural titanium",
+  "rose gold",
+  "starlight silver",
+  "deep blue",
+  "cosmic orange",
+];
+
+const CONNECTIVITY = ["4g", "lte", "dual sim", "dual-sim"];
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function wordBoundaryRegex(phrase, flags = "gi") {
+  return new RegExp(`(?<![\\w])${escapeRegex(phrase)}(?![\\w])`, flags);
+}
+
+export function normalizeName(raw) {
+  let name = raw.toLowerCase().trim();
+
+  // 1. Normalize Russian GB: "256 ГБ" -> "256gb"
+  name = name.replace(/(\d+)\s*гб/gi, "$1gb");
+
+  // 2. Strip "Apple" brand prefix
+  name = name.replace(/^apple\s+/, "");
+
+  // 2b. Normalize Plus variants: "Pro+" / "Pro Plus" / "Pro +" → "pro plus"
+  name = name.replace(/\bpro\s*\+/gi, "pro plus");
+  name = name.replace(/note\s*\+/gi, "note plus");
+  name = name.replace(/\+(?=\s|$)/g, " plus");
+
+  // 3. Extract SIM type FROM parentheses before stripping them
+  //    "(eSim)" -> "esim", "(Nano-Sim)" -> "nanosim"
+  name = name.replace(/\(([^)]*)\)/g, (match, inner) => {
+    const tokens = [];
+    if (/e[\s-]?sim/i.test(inner)) tokens.push("esim");
+    if (/nano[\s-]?sim/i.test(inner)) tokens.push("nanosim");
+    if (/dual[\s-]?sim/i.test(inner)) tokens.push("dualsim");
+    return tokens.length ? " " + tokens.join(" ") + " " : " ";
+  });
+
+  // 4. Normalize bare SIM tokens outside parentheses
+  name = name.replace(/\be[\s-]?sim\b/gi, "esim");
+  name = name.replace(/\bnano[\s-]?sim\b/gi, "nanosim");
+
+  // For others keep RAM as part of key since 8GB/256GB ≠ 12GB/256GB
+  // 5. RAM stripping — only for Apple, keep RAM for Android
+  const isApple = name.startsWith("iphone") || name.startsWith("apple");
+  if (isApple) {
+    name = name.replace(/\b\d+\s*gb\s*[\/+]\s*(\d+\s*gb)\b/gi, "$1");
+    name = name.replace(/\b\d+\s*[\/+]\s*(\d+\s*gb)\b/gi, "$1");
+  } else {
+    // Keep RAM+storage but normalize format: "4GB/64GB" -> "4gb 64gb"
+    name = name.replace(/\b(\d+)\s*gb\s*[\/+]\s*(\d+)\s*gb\b/gi, "$1gb $2gb");
+    name = name.replace(/\b(\d+)\s*[\/+]\s*(\d+)\s*gb\b/gi, "$1gb $2gb");
+  }
+
+  // 6. Normalize storage spacing: "128 gb" -> "128gb"
+  name = name.replace(/(\d+)\s*gb/gi, "$1gb");
+
+  // 7. Remove multi-word colors first
+  for (const color of MULTIWORD_COLORS) {
+    name = name.replace(wordBoundaryRegex(color), "");
+  }
+
+  // 8. Remove single-word colors
+  for (const color of COLORS) {
+    name = name.replace(wordBoundaryRegex(color), "");
+  }
+
+  // 9. Remove connectivity suffixes (NOT esim/nanosim)
+  for (const conn of CONNECTIVITY) {
+    name = name.replace(wordBoundaryRegex(conn), "");
+  }
+
+  // 9b. Strip "dual" prefix before esim (e.g. "Dual eSIM" -> "esim")
+  name = name.replace(/\bdual\s+(?=esim)/gi, "");
+
+  // 10. Clean punctuation and whitespace
+  name = name
+    .replace(/[,\-_\/\\&]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // 11. Reorder tokens: storage before sim type
+  //     "iphone 17 pro max esim 256gb" -> "iphone 17 pro max 256gb esim"
+  name = reorderTokens(name);
+
+  return name;
+}
+
+function stripStorage(key) {
+  // Remove storage (e.g. "256gb", "1tb") from anywhere in the key
+  return key
+    .replace(/\s+\d+(?:gb|tb)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function reorderTokens(name) {
+  // Ensure storage always appears before sim tokens for consistent keys
+  // e.g. "iphone 17 pro max esim 256gb" -> "iphone 17 pro max 256gb esim"
+  const simTokens = [];
+  const storageTokens = [];
+  const otherTokens = [];
+
+  for (const token of name.split(" ")) {
+    if (/^\d+(gb|tb)$/i.test(token)) storageTokens.push(token);
+    else if (["esim", "nanosim", "dualsim"].includes(token))
+      simTokens.push(token);
+    else otherTokens.push(token);
+  }
+
+  return [...otherTokens, ...storageTokens, ...simTokens].join(" ");
+}
+
+function getMatchKey(key) {
+  return key
+    .replace(/\s+nanosim\b/g, "")
+    .replace(/\s+dual\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getBaseKey(key) {
+  const hasStorage = /\d+(gb|tb)/i.test(key);
+  if (hasStorage) {
+    return getMatchKey(key);
+  } else {
+    return stripStorage(getMatchKey(key));
+  }
+}
+
+export function groupByNormalizedName(allProducts) {
+  function stripSimType(key) {
+    return key.replace(/\s+(esim|nanosim|dualsim)$/, "").trim();
+  }
+  const groups = new Map();
+
+  const items = allProducts.map((p) => ({
+    product: p,
+    key: normalizeName(p.name),
+  }));
+
+  const baseToCanonical = new Map();
+
+  for (const { key } of items) {
+    const base = getBaseKey(key);
+    if (!baseToCanonical.has(base)) {
+      baseToCanonical.set(base, key);
+    } else {
+      const existing = baseToCanonical.get(base);
+      if (existing === base && key !== base) {
+        baseToCanonical.set(base, key);
+      }
+    }
+  }
+
+  for (const { product, key } of items) {
+    const base = getBaseKey(key);
+    const canonicalKey = baseToCanonical.get(base) ?? key;
+
+    if (!groups.has(canonicalKey)) {
+      groups.set(canonicalKey, { normalized: canonicalKey, sources: {} });
+    }
+
+    const group = groups.get(canonicalKey);
+    const existing = group.sources[product.source];
+    if (existing) {
+      const newCash = product.cash_price ?? Infinity;
+      const oldCash = existing.cash_price ?? Infinity;
+      if (newCash >= oldCash) continue;
+    }
+
+    group.sources[product.source] = {
+      name: product.name,
+      cash_price: product.cash_price ?? null,
+      installment_price: product.installment_price ?? null,
+    };
+  }
+
+  return groups;
+}
