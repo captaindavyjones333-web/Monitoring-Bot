@@ -107,7 +107,19 @@ async function fetchProductVariants(baseName, url) {
       console.log("  -> attributes PARSE FAILED:", e.message);
       return [parseSimpleProduct(baseName, html)].filter(Boolean);
     }
-
+    // Extract disabled/empty option IDs from HTML
+    const disabledProductIds = new Set();
+    const $html = cheerio.load(html);
+    $html('.swatch-option[data-option-empty="true"]').each((_, el) => {
+      const optionId = $html(el).attr("data-option-id");
+      if (optionId) {
+        for (const attr of Object.values(attributes)) {
+          const option = attr.options?.find((o) => o.id === optionId);
+          if (option)
+            option.products?.forEach((id) => disabledProductIds.add(id));
+        }
+      }
+    });
     // Find memory attribute
     const memoryAttr = Object.values(attributes).find(
       (a) => a.code === "memory",
@@ -134,8 +146,9 @@ async function fetchProductVariants(baseName, url) {
         // Has RAM variants — create entry per RAM+storage combination
         for (const ramOption of ramAttr.options) {
           const ramLabel = ramOption.label.replace(/\s+/g, "");
-          const productId = storageOption.products.find((id) =>
-            ramOption.products.includes(id),
+          const productId = storageOption.products.find(
+            (id) =>
+              ramOption.products.includes(id) && !disabledProductIds.has(id),
           );
           console.log(
             `  RAM ${ramLabel}: match=${productId}, price=${optionPrices[productId]?.finalPrice?.amount}`,
@@ -156,7 +169,9 @@ async function fetchProductVariants(baseName, url) {
         }
       } else {
         // No RAM variants — storage only
-        const productId = storageOption.products[0];
+        const productId = storageOption.products.find(
+          (id) => !disabledProductIds.has(id),
+        );
         if (!productId || !optionPrices[productId]) continue;
 
         const cash_price = optionPrices[productId].finalPrice?.amount ?? null;
