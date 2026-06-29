@@ -5,4 +5,5 @@ process.on("unhandledRejection", (reason) => {
 
 process.on("uncaughtException", (err) => {
   console.error("[error] Uncaught exception:", err.message);
+  // Don't exit - keep the process running
 });
