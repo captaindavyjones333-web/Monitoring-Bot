@@ -247,10 +247,16 @@ export async function scrape3DPlanet() {
   console.log(`[3d] ${unique.length} unique products, fetching details...`);
 
   const browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--no-first-run",
+    ],
   });
   const puppeteerPage = await browser.newPage();
   await puppeteerPage.setUserAgent(

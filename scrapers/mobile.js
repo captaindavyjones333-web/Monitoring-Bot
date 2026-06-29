@@ -209,10 +209,16 @@ async function fetchVariants(page, listingName, url, listingCashPrice) {
 
 export async function scrapeMobileCentre() {
   const browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--no-first-run",
+    ],
   });
   const page = await browser.newPage();
   await page.setUserAgent(
@@ -253,3 +259,4 @@ export async function scrapeMobileCentre() {
     await browser.close();
   }
 }
+
