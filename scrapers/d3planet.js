@@ -1,5 +1,5 @@
 // scrapers/d3planet.js
-import puppeteer from "puppeteer-core";
+import puppeteer from "puppeteer";
 import chromium from "@sparticuz/chromium";
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -248,14 +248,14 @@ export async function scrape3DPlanet() {
 
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
-      "--disable-extensions",
-      "--disable-background-networking",
-      "--no-first-run",
+      "--single-process",
+      "--no-zygote",
     ],
   });
   const puppeteerPage = await browser.newPage();

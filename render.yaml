@@ -1,11 +1,9 @@
 services:
   - type: web
     name: monitoring-bot
-    env: node
+    env: docker
     region: frankfurt
     plan: free
-    buildCommand: npm install
-    startCommand: npm start
     envVars:
       - key: BOT_TOKEN
         sync: false

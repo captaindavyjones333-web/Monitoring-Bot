@@ -1,5 +1,5 @@
 // scrapers/mobile.js
-import puppeteer from "puppeteer-core";
+import puppeteer from "puppeteer";
 import chromium from "@sparticuz/chromium";
 import * as cheerio from "cheerio";
 import { saveCache, markUpdated } from "../core/cache_manager.js";
@@ -210,14 +210,14 @@ async function fetchVariants(page, listingName, url, listingCashPrice) {
 export async function scrapeMobileCentre() {
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
-      "--disable-extensions",
-      "--disable-background-networking",
-      "--no-first-run",
+      "--single-process",
+      "--no-zygote",
     ],
   });
   const page = await browser.newPage();
@@ -259,4 +259,3 @@ export async function scrapeMobileCentre() {
     await browser.close();
   }
 }
-
