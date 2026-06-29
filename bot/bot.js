@@ -5,24 +5,13 @@ import { runSendJob } from "../jobs/sendJob.js";
 import dotenv from "dotenv";
 dotenv.config();
 
-const TOKEN = process.env.BOT_TOKEN;
+const TOKEN   = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 
-if (!TOKEN) throw new Error("BOT_TOKEN is missing in .env");
+if (!TOKEN)   throw new Error("BOT_TOKEN is missing in .env");
 if (!CHAT_ID) throw new Error("CHAT_ID is missing in .env");
 
 export const bot = new TelegramBot(TOKEN, { polling: true });
-
-// Show persistent keyboard on startup
-bot
-  .sendMessage(CHAT_ID, "🤖 Բոտը միացված է", {
-    reply_markup: {
-      keyboard: [[{ text: "🔍 Ստուգել հիմա" }]],
-      resize_keyboard: true,
-      persistent: true,
-    },
-  })
-  .catch(() => {});
 
 // Static persistent keyboard — always visible
 const MAIN_KEYBOARD = {
@@ -30,7 +19,7 @@ const MAIN_KEYBOARD = {
     keyboard: [[{ text: "🔍 Ստուգել հիմա" }]],
     resize_keyboard: true,
     persistent: true,
-  },
+  }
 };
 
 // ─── Send alerts to Telegram ──────────────────────────────────────────────────
@@ -48,16 +37,15 @@ export async function sendAlerts(messages) {
 // ─── /start command ───────────────────────────────────────────────────────────
 
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(
-    msg.chat.id,
+  bot.sendMessage(msg.chat.id,
     "👋 Բարև! Ես գների մոնիտորինգի բոտն եմ.\n\n" +
-      "Ամեն օր ժամը *06:00*-ին ստուգում եմ բոլոր կայքերը,\n" +
-      "ժամը *09:00*-ից ուղարկում եմ գնային անհամապատասխանությունները.\n\n" +
-      "Սեղմեք կոճակը՝ հիմա ստուգելու համար ⬇️",
+    "Ամեն օր ժամը *06:00*-ին ստուգում եմ բոլոր կայքերը,\n" +
+    "ժամը *09:00*-ից ուղարկում եմ գնային անհամապատասխանությունները.\n\n" +
+    "Սեղմեք կոճակը՝ հիմա ստուգելու համար ⬇️",
     {
       parse_mode: "Markdown",
       ...MAIN_KEYBOARD,
-    },
+    }
   );
 });
 
@@ -68,11 +56,7 @@ bot.on("message", async (msg) => {
 
   const chatId = msg.chat.id;
 
-  await bot.sendMessage(
-    chatId,
-    "🔄 Սկանավորում եմ բոլոր կայքերը, խնդրում եմ սպասել...",
-    MAIN_KEYBOARD,
-  );
+  await bot.sendMessage(chatId, "🔄 Սկանավորում եմ բոլոր կայքերը, խնդրում եմ սպասել...", MAIN_KEYBOARD);
 
   try {
     // Scrape fresh data
@@ -82,29 +66,18 @@ bot.on("message", async (msg) => {
     const alerts = await runSendJob(false, false);
 
     if (alerts.length === 0) {
-      await bot.sendMessage(
-        chatId,
-        "✅ Գնային անհամապատասխանություններ չկան",
-        MAIN_KEYBOARD,
-      );
+      await bot.sendMessage(chatId, "✅ Գնային անհամապատասխանություններ չկան", MAIN_KEYBOARD);
       return;
     }
 
-    await bot.sendMessage(
-      chatId,
-      `🚨 Հայտնաբերվել է ${alerts.length} անհամապատասխանություն`,
-      MAIN_KEYBOARD,
-    );
+    await bot.sendMessage(chatId, `🚨 Հայտնաբերվել է ${alerts.length} անհամապատասխանություն`, MAIN_KEYBOARD);
     for (const msg of alerts) {
       await bot.sendMessage(chatId, msg, { parse_mode: "Markdown" });
     }
+
   } catch (err) {
     console.error("[bot] ❌ Manual check failed:", err.message);
-    await bot.sendMessage(
-      chatId,
-      "❌ Սխալ տեղի ունեցավ: " + err.message,
-      MAIN_KEYBOARD,
-    );
+    await bot.sendMessage(chatId, "❌ Սխալ տեղի ունեցավ: " + err.message, MAIN_KEYBOARD);
   }
 });
 
