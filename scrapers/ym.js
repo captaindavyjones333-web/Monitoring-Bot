@@ -6,11 +6,33 @@ const BASE_URL = "https://www.yerevanmobile.am";
 const LIST_URL = `${BASE_URL}/am/electronics/phones.html?brands=171%2C11%2C12%2C38%2C411&product_list_limit=48`;
 
 const HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "hy-AM,hy;q=0.9,en-US;q=0.8,en;q=0.7",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "hy-AM,hy;q=0.9,en;q=0.8",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Connection": "keep-alive",
+  "Upgrade-Insecure-Requests": "1",
+  "Cache-Control": "max-age=0",
 };
+
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+const axiosInstance = axios.create({
+  timeout: 15000,
+  headers: HEADERS,
+});
+
+async function fetchWithRetry(url, retries = 3, delay = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await axiosInstance.get(url);
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      console.warn(`[yerevanmobile] Attempt ${i + 1} failed: ${err.message}. Retrying in ${delay * (i + 1)}ms...`);
+      await sleep(delay * (i + 1));
+    }
+  }
+}
 
 function getTotalPages($) {
   let maxPage = 1;
@@ -45,11 +67,9 @@ function extractListingProducts($) {
   return products;
 }
 
-// --- Detail page parser ---
-
 async function fetchProductVariants(baseName, url) {
   try {
-    const res = await axios.get(url, { headers: HEADERS, timeout: 10000 });
+    const res = await fetchWithRetry(url);
     const html = res.data;
 
     const attrStart = html.indexOf('"attributes"');
@@ -73,10 +93,7 @@ async function fetchProductVariants(baseName, url) {
         .replace(/^"optionPrices"\s*:\s*/, "")
         .replace(/,\s*$/, "");
       optionPrices = JSON.parse(jsonStr);
-      console.log(
-        "  optionPrices keys:",
-        Object.keys(optionPrices).slice(0, 3),
-      );
+      console.log("  optionPrices keys:", Object.keys(optionPrices).slice(0, 3));
     } catch (e) {
       console.log("  -> optionPrices PARSE FAILED:", e.message);
       return [parseSimpleProduct(baseName, html)].filter(Boolean);
@@ -87,7 +104,6 @@ async function fetchProductVariants(baseName, url) {
       const attrChunk = html.slice(attrStart, optionStart);
       let jsonStr = attrChunk.replace(/^"attributes"\s*:\s*/, "");
 
-      // Find the correct end by counting braces
       let depth = 0;
       let endIndex = 0;
       for (let i = 0; i < jsonStr.length; i++) {
@@ -107,7 +123,7 @@ async function fetchProductVariants(baseName, url) {
       console.log("  -> attributes PARSE FAILED:", e.message);
       return [parseSimpleProduct(baseName, html)].filter(Boolean);
     }
-    // Extract disabled/empty option IDs from HTML
+
     const disabledProductIds = new Set();
     const $html = cheerio.load(html);
     $html('.swatch-option[data-option-empty="true"]').each((_, el) => {
@@ -120,19 +136,11 @@ async function fetchProductVariants(baseName, url) {
         }
       }
     });
-    // Find memory attribute
-    const memoryAttr = Object.values(attributes).find(
-      (a) => a.code === "memory",
-    );
+
+    const memoryAttr = Object.values(attributes).find((a) => a.code === "memory");
     const ramAttr = Object.values(attributes).find((a) => a.code === "gb_ram");
-    console.log(
-      "  ramAttr:",
-      ramAttr ? ramAttr.options.map((o) => o.label) : "NOT FOUND",
-    );
-    console.log(
-      "  memoryAttr:",
-      memoryAttr ? memoryAttr.options.map((o) => o.label) : "NOT FOUND",
-    );
+    console.log("  ramAttr:", ramAttr ? ramAttr.options.map((o) => o.label) : "NOT FOUND");
+    console.log("  memoryAttr:", memoryAttr ? memoryAttr.options.map((o) => o.label) : "NOT FOUND");
 
     if (!memoryAttr)
       return [parseSimpleProduct(baseName, html)].filter(Boolean);
@@ -143,7 +151,6 @@ async function fetchProductVariants(baseName, url) {
       const storageLabel = storageOption.label.replace(/\s+/g, "");
 
       if (ramAttr) {
-        // Has RAM variants — create entry per RAM+storage combination
         for (const ramOption of ramAttr.options) {
           const ramLabel = ramOption.label.replace(/\s+/g, "");
           const productId = storageOption.products.find(
@@ -156,8 +163,7 @@ async function fetchProductVariants(baseName, url) {
           if (!productId || !optionPrices[productId]) continue;
 
           const cash_price = optionPrices[productId].finalPrice?.amount ?? null;
-          const installment_price =
-            optionPrices[productId].creditPrice?.amount ?? null;
+          const installment_price = optionPrices[productId].creditPrice?.amount ?? null;
           if (!cash_price) continue;
 
           results.push({
@@ -168,15 +174,13 @@ async function fetchProductVariants(baseName, url) {
           });
         }
       } else {
-        // No RAM variants — storage only
         const productId = storageOption.products.find(
           (id) => !disabledProductIds.has(id),
         );
         if (!productId || !optionPrices[productId]) continue;
 
         const cash_price = optionPrices[productId].finalPrice?.amount ?? null;
-        const installment_price =
-          optionPrices[productId].creditPrice?.amount ?? null;
+        const installment_price = optionPrices[productId].creditPrice?.amount ?? null;
         if (!cash_price) continue;
 
         results.push({
@@ -187,10 +191,7 @@ async function fetchProductVariants(baseName, url) {
         });
       }
     }
-    console.log(
-      "  results:",
-      results.map((r) => r.name),
-    );
+    console.log("  results:", results.map((r) => r.name));
 
     return results.length > 0
       ? results
@@ -220,15 +221,13 @@ function parseSimpleProduct(baseName, html) {
   };
 }
 
-// --- Main scraper ---
-
 export async function scrapeYerevanMobile() {
   const listingProducts = [];
   let page = 1;
 
   while (true) {
     const pageUrl = page === 1 ? LIST_URL : `${LIST_URL}&p=${page}`;
-    const res = await axios.get(pageUrl, { headers: HEADERS });
+    const res = await fetchWithRetry(pageUrl);
     const $ = cheerio.load(res.data);
 
     const pageProducts = extractListingProducts($);
@@ -238,17 +237,14 @@ export async function scrapeYerevanMobile() {
 
     listingProducts.push(...pageProducts);
 
-    // Check if next page exists via next button
     const hasNextPage =
       $("a.action.next").length > 0 && !$("a.action.next").hasClass("inactive");
 
     if (!hasNextPage) break;
 
     page++;
-    await new Promise((r) => setTimeout(r, 500));
+    await sleep(500);
   }
-
-  // ... rest stays the same
 
   const allProducts = [];
 
@@ -259,14 +255,13 @@ export async function scrapeYerevanMobile() {
     const variants = await fetchProductVariants(name, url);
     allProducts.push(...variants);
 
-    await new Promise((r) => setTimeout(r, 300));
+    await sleep(300);
   }
 
   console.log(`[ym] Total variants: ${allProducts.length}`);
   return allProducts;
 }
 
-// Auto-execute when run directly
 const products = await scrapeYerevanMobile();
 saveCache("yerevanmobile", products);
 markUpdated("yerevanmobile");
