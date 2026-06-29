@@ -1,4 +1,5 @@
 // index.js
+import "./errorHandler.js";
 import http from "http";
 import cron from "node-cron";
 import { runScraping } from "./jobs/scrapeJob.js";
