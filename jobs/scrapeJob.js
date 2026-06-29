@@ -9,7 +9,10 @@ import { saveCache, markUpdated } from "../core/cache_manager.js";
 async function runScraper(fn, source) {
   try {
     console.log(`[scrape] Scraping ${source}...`);
-    const products = await fn();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Scraper timeout after 5 minutes')), 5 * 60 * 1000)
+    );
+    const products = await Promise.race([fn(), timeoutPromise]);
     if (!products || products.length === 0) {
       console.warn(`[scrape] ⚠️  ${source}: no products, keeping old cache`);
       return;
@@ -34,11 +37,10 @@ export async function runScraping() {
   ]);
 
   // Group 2: Puppeteer scrapers in parallel
-  console.log("[scrape] Group 2: Puppeteer scrapers (parallel)...");
-  await Promise.allSettled([
-    runScraper(scrapeMobileCentre, "mobilecentre"),
-    runScraper(scrape3DPlanet, "3dplanet"),
-  ]);
+  // Group 2: Puppeteer scrapers sequentially (not parallel - saves memory)
+  console.log("[scrape] Group 2: Puppeteer scrapers (sequential)...");
+  await runScraper(scrapeMobileCentre, "mobilecentre");
+  await runScraper(scrape3DPlanet, "3dplanet");
 
   console.log("[scrape] ✅ Scrape job complete");
 }
