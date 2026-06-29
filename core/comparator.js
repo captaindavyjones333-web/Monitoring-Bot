@@ -67,6 +67,12 @@ function formatPricePair(cash, installment, rsCash, rsInstallment, isRedstore) {
     return parts.join(" - ");
   }
 
+  // Check if prices exactly match Redstore
+  const cashMatch = cash === rsCash;
+  const installmentMatch =
+    !installment || installment === (rsInstallment ?? rsCash);
+  if (cashMatch && installmentMatch) return "Արժեքները նույնն են";
+
   const cashFlag = cash ? getFlag(rsCash, cash) : "";
   const instFlag = installment
     ? getFlag(rsInstallment ?? rsCash, installment)

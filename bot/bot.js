@@ -59,10 +59,7 @@ bot.on("message", async (msg) => {
   await bot.sendMessage(chatId, "🔄 Սկանավորում եմ բոլոր կայքերը, խնդրում եմ սպասել...", MAIN_KEYBOARD);
 
   try {
-    // Scrape fresh data
     await runScraping();
-
-    // Compare and get all alerts
     const alerts = await runSendJob(false, false);
 
     if (alerts.length === 0) {
@@ -70,14 +67,14 @@ bot.on("message", async (msg) => {
       return;
     }
 
-    await bot.sendMessage(chatId, `🚨 Հայտնաբերվել է ${alerts.length} անհամապատասխանություն`, MAIN_KEYBOARD);
-    for (const msg of alerts) {
-      await bot.sendMessage(chatId, msg, { parse_mode: "Markdown" });
+    await bot.sendMessage(chatId, `🚨 ${alerts.length} անհամապատասխանություն`, MAIN_KEYBOARD);
+    for (const alert of alerts) {
+      await bot.sendMessage(chatId, alert, { parse_mode: "Markdown" });
     }
 
   } catch (err) {
     console.error("[bot] ❌ Manual check failed:", err.message);
-    await bot.sendMessage(chatId, "❌ Սխալ տեղի ունեցավ: " + err.message, MAIN_KEYBOARD);
+    await bot.sendMessage(chatId, "❌ Սխալ: " + err.message, MAIN_KEYBOARD);
   }
 });
 
