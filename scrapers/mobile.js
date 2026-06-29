@@ -1,5 +1,6 @@
 // scrapers/mobile.js
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 import * as cheerio from "cheerio";
 import { saveCache, markUpdated } from "../core/cache_manager.js";
 
@@ -208,15 +209,10 @@ async function fetchVariants(page, listingName, url, listingCashPrice) {
 
 export async function scrapeMobileCentre() {
   const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--single-process",
-      "--no-zygote",
-    ],
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
   });
   const page = await browser.newPage();
   await page.setUserAgent(

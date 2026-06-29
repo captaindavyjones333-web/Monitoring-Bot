@@ -1,5 +1,6 @@
 // scrapers/d3planet.js
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import { saveCache, markUpdated } from "../core/cache_manager.js";
@@ -246,15 +247,10 @@ export async function scrape3DPlanet() {
   console.log(`[3d] ${unique.length} unique products, fetching details...`);
 
   const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--single-process",
-      "--no-zygote",
-    ],
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
   });
   const puppeteerPage = await browser.newPage();
   await puppeteerPage.setUserAgent(
