@@ -1,6 +1,15 @@
 services:
-  - type: worker
+  - type: web
     name: monitoring-bot
     env: node
+    region: frankfurt
+    plan: free
     buildCommand: npm install
     startCommand: npm start
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: CHAT_ID
+        sync: false
+      - key: NODE_ENV
+        value: production
