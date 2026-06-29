@@ -288,8 +288,3 @@ export async function scrape3DPlanet() {
   console.log(`[3d] Total unique products: ${result.length}`);
   return result;
 }
-
-// Auto-execute when run directly
-const products = await scrape3DPlanet();
-saveCache("3dplanet", products);
-markUpdated("3dplanet");

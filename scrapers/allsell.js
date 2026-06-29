@@ -301,8 +301,3 @@ export async function scrapeAllsell() {
   console.log(`[allsell] Total unique products: ${result.length}`);
   return result;
 }
-
-// Auto-execute when run directly
-const products = await scrapeAllsell();
-saveCache("allsell", products);
-markUpdated("allsell");

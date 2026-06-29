@@ -257,7 +257,3 @@ export async function scrapeMobileCentre() {
     await browser.close();
   }
 }
-
-const products = await scrapeMobileCentre();
-saveCache("mobilecentre", products);
-markUpdated("mobilecentre");

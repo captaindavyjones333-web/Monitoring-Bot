@@ -273,8 +273,3 @@ export async function scrapeYerevanMobile() {
   console.log(`[ym] Total variants: ${allProducts.length}`);
   return allProducts;
 }
-
-// Auto-execute when run directly
-const products = await scrapeYerevanMobile();
-saveCache("yerevanmobile", products);
-markUpdated("yerevanmobile");
