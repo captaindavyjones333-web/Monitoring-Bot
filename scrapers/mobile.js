@@ -214,6 +214,8 @@ export async function scrapeMobileCentre() {
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      "--single-process",
+      "--no-zygote",
     ],
   });
   const page = await browser.newPage();

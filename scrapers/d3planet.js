@@ -252,6 +252,8 @@ export async function scrape3DPlanet() {
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      "--single-process",
+      "--no-zygote",
     ],
   });
   const puppeteerPage = await browser.newPage();
