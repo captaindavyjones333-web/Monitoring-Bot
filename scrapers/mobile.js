@@ -1,6 +1,5 @@
 // scrapers/mobile.js
 import puppeteer from "puppeteer";
-import chromium from "@sparticuz/chromium";
 import * as cheerio from "cheerio";
 import { saveCache, markUpdated } from "../core/cache_manager.js";
 
@@ -18,8 +17,9 @@ async function getAllProductUrls(page) {
 
   let prevCount = 0;
   let noChangeCount = 0;
+  const MAX_ATTEMPTS = 5;
 
-  while (noChangeCount < 3) {
+  while (noChangeCount < 3 && noChangeCount < MAX_ATTEMPTS) {
     await page.evaluate(async () => {
       await new Promise((resolve) => {
         let totalHeight = 0;
@@ -35,7 +35,7 @@ async function getAllProductUrls(page) {
       });
     });
 
-    await new Promise((r) => setTimeout(r, 3000));
+    await new Promise((r) => setTimeout(r, 2000));
 
     const count = await page.$$eval(".item-body", (els) => els.length);
     console.log(`[mc] Items loaded: ${count}`);
@@ -82,7 +82,6 @@ async function getAllProductUrls(page) {
 }
 
 async function fetchVariants(page, listingName, url, listingCashPrice) {
-  console.log(`[mc] -> fetching: ${url}`);
   try {
     await page.goto(url, { waitUntil: "networkidle2", timeout: 20000 });
 
@@ -90,26 +89,14 @@ async function fetchVariants(page, listingName, url, listingCashPrice) {
     const $ = cheerio.load(html);
 
     const fullName = $("h1").first().text().trim() || listingName;
-    console.log(`[mc] -> name: "${fullName}"`);
-
-    const priceText = $(".price .regular")
-      .clone()
-      .find("span")
-      .remove()
-      .end()
-      .text()
-      .trim();
-    console.log(`[mc] -> priceText: "${priceText}"`);
+    const priceText = $(".price .regular").clone().find("span").remove().end().text().trim();
     const detailCashPrice = parsePrice(priceText) || listingCashPrice;
-    console.log(`[mc] -> cash: ${detailCashPrice}`);
 
     const creditLink = $(".credit_calc_link a").first();
     const installment_price = creditLink.length
       ? parseInt(creditLink.attr("data-price"), 10) || null
       : null;
-    console.log(`[mc] -> installment: ${installment_price}`);
 
-    // Get variant links
     const variantLinks = new Set();
     $("a").each((_, el) => {
       const href = $(el).attr("href") || "";
@@ -117,32 +104,14 @@ async function fetchVariants(page, listingName, url, listingCashPrice) {
       if (
         href.includes("mobilecentre.am/product") &&
         text &&
-        [
-          "Dual eSIM",
-          "Nano-SIM & eSIM",
-          "eSIM",
-          "Nano-SIM",
-          "128GB",
-          "256GB",
-          "512GB",
-          "1TB",
-          "2TB",
-        ].includes(text)
+        ["Dual eSIM", "Nano-SIM & eSIM", "eSIM", "Nano-SIM",
+         "128GB", "256GB", "512GB", "1TB", "2TB"].includes(text)
       ) {
         variantLinks.add(href);
       }
     });
 
-    console.log(`[mc] -> variants found: ${variantLinks.size}`);
-
-    const results = [
-      {
-        name: fullName,
-        cash_price: detailCashPrice,
-        installment_price,
-        source: "mobilecentre",
-      },
-    ];
+    const results = [{ name: fullName, cash_price: detailCashPrice, installment_price, source: "mobilecentre" }];
 
     if (variantLinks.size === 0) return results;
 
@@ -153,23 +122,14 @@ async function fetchVariants(page, listingName, url, listingCashPrice) {
       seen.add(variantUrl);
 
       try {
-        await page.goto(variantUrl, {
-          waitUntil: "networkidle2",
-          timeout: 15000,
-        });
+        await page.goto(variantUrl, { waitUntil: "networkidle2", timeout: 15000 });
         const vHtml = await page.content();
         const v$ = cheerio.load(vHtml);
 
         const vName = v$("h1").first().text().trim();
         if (!vName || vName === fullName) continue;
 
-        const vPriceText = v$(".price .regular")
-          .clone()
-          .find("span")
-          .remove()
-          .end()
-          .text()
-          .trim();
+        const vPriceText = v$(".price .regular").clone().find("span").remove().end().text().trim();
         const vCash = parsePrice(vPriceText) || null;
         if (!vCash) continue;
 
@@ -178,15 +138,7 @@ async function fetchVariants(page, listingName, url, listingCashPrice) {
           ? parseInt(vCreditLink.attr("data-price"), 10) || null
           : null;
 
-        console.log(
-          `[mc] -> variant: "${vName}" cash:${vCash} installment:${vInstallment}`,
-        );
-        results.push({
-          name: vName,
-          cash_price: vCash,
-          installment_price: vInstallment,
-          source: "mobilecentre",
-        });
+        results.push({ name: vName, cash_price: vCash, installment_price: vInstallment, source: "mobilecentre" });
         await new Promise((r) => setTimeout(r, 300));
       } catch (err) {
         console.warn(`[mc] Variant failed ${variantUrl}: ${err.message}`);
@@ -196,14 +148,7 @@ async function fetchVariants(page, listingName, url, listingCashPrice) {
     return results;
   } catch (err) {
     console.warn(`[mc] Detail page failed ${url}: ${err.message}`);
-    return [
-      {
-        name: listingName,
-        cash_price: listingCashPrice,
-        installment_price: null,
-        source: "mobilecentre",
-      },
-    ];
+    return [{ name: listingName, cash_price: listingCashPrice, installment_price: null, source: "mobilecentre" }];
   }
 }
 
@@ -239,10 +184,8 @@ export async function scrapeMobileCentre() {
       if (seenUrls.has(url)) continue;
       seenUrls.add(url);
 
+      console.log(`[mc] (${i + 1}/${listingProducts.length}) ${name}`);
       const variants = await fetchVariants(page, name, url, cash_price);
-      console.log(
-        `[mc] got ${variants.length} variants, first: "${variants[0]?.name}"`,
-      );
       allProducts.push(...variants);
 
       await new Promise((r) => setTimeout(r, 300));
