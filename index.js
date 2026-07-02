@@ -1,4 +1,3 @@
-// index.js
 import "./errorHandler.js";
 import http from "http";
 import cron from "node-cron";

@@ -1,4 +1,3 @@
-// errorHandler.js
 process.on("unhandledRejection", (reason) => {
   console.error("[error] Unhandled rejection:", reason?.message || reason);
 });

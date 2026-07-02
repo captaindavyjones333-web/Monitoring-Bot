@@ -1,4 +1,3 @@
-// core/comparator.js
 import { normalizeName, groupByNormalizedName } from "./normalizer.js";
 
 const THRESHOLD_FLAT = 3000; // 3000 AMD flat threshold
@@ -59,27 +58,32 @@ function getFlag(rsPrice, competitorPrice) {
  * @returns {string}  e.g. "✅359.000 - ✅379.000"
  */
 function formatPricePair(cash, installment, rsCash, rsInstallment, isRedstore) {
-  const fmt = (n) => (n ? n.toLocaleString("ru-RU").replace(/,/g, ".") : "—");
+  const fmt = (n) => (n ? n.toLocaleString("ru-RU").replace(/,/g, " ") : "—");
+
+  // If no installment price, use cash price as installment
+  const effectiveInstallment = installment ?? cash;
 
   if (isRedstore) {
     const parts = [fmt(cash)];
-    if (installment) parts.push(fmt(installment));
+    if (effectiveInstallment) parts.push(fmt(effectiveInstallment));
     return parts.join(" - ");
   }
 
   // Check if prices exactly match Redstore
+  const rsEffectiveInstallment = rsInstallment ?? rsCash;
   const cashMatch = cash === rsCash;
-  const installmentMatch =
-    !installment || installment === (rsInstallment ?? rsCash);
+  const installmentMatch = effectiveInstallment === rsEffectiveInstallment;
   if (cashMatch && installmentMatch) return "Արժեքները նույնն են";
 
   const cashFlag = cash ? getFlag(rsCash, cash) : "";
-  const instFlag = installment
-    ? getFlag(rsInstallment ?? rsCash, installment)
+  const instFlag = effectiveInstallment
+    ? getFlag(rsEffectiveInstallment, effectiveInstallment)
     : "";
 
   const cashStr = cash ? `${cashFlag}${fmt(cash)}` : "—";
-  const instStr = installment ? `${instFlag}${fmt(installment)}` : null;
+  const instStr = effectiveInstallment
+    ? `${instFlag}${fmt(effectiveInstallment)}`
+    : null;
 
   return instStr ? `${cashStr} - ${instStr}` : cashStr;
 }
@@ -139,14 +143,16 @@ export function buildComparisons(groups) {
 
       // Check if any competitor triggered ❗
       if (!isRS) {
-        if (entry.cash_price && getFlag(rsCash, entry.cash_price) === "❗") {
-          hasAlert = true;
+        if (entry.cash_price) {
+          const flag = getFlag(rsCash, entry.cash_price);
+          if (flag === "❗" || flag === "✅") hasAlert = true;
         }
-        if (
-          entry.installment_price &&
-          getFlag(rsInstallment ?? rsCash, entry.installment_price) === "❗"
-        ) {
-          hasAlert = true;
+        if (entry.installment_price) {
+          const flag = getFlag(
+            rsInstallment ?? rsCash,
+            entry.installment_price,
+          );
+          if (flag === "❗" || flag === "✅") hasAlert = true;
         }
       }
     }
@@ -166,8 +172,79 @@ export function buildComparisons(groups) {
  * @param {Array} comparisons - output of buildComparisons()
  * @returns {string[]} array of formatted Telegram messages, one per product
  */
+
+const BRAND_ORDER = [
+  "iphone",
+  "samsung",
+  "xiaomi",
+  "poco",
+  "redmi",
+  "google",
+  "pixel",
+  "oneplus",
+  "nothing",
+];
+
+const IPHONE_ORDER = [
+  "iphone 13",
+  "iphone 14",
+  "iphone 15",
+  "iphone 16",
+  "iphone 17",
+];
+const SAMSUNG_ORDER = ["galaxy a", "galaxy s", "galaxy z"];
+
+function getSortKey(message) {
+  const name = message.toLowerCase();
+
+  // iPhone ordering
+  if (name.includes("iphone")) {
+    const model = IPHONE_ORDER.findIndex((m) => name.includes(m));
+    return `0_${model >= 0 ? model : 99}_${name}`;
+  }
+
+  // Samsung ordering
+  if (name.includes("samsung")) {
+    const series = SAMSUNG_ORDER.findIndex((s) => name.includes(s));
+    return `1_${series >= 0 ? series : 99}_${name}`;
+  }
+
+  // Xiaomi ordering
+  if (
+    name.includes("xiaomi") ||
+    name.includes("poco") ||
+    name.includes("redmi")
+  ) {
+    return `2_${name}`;
+  }
+
+  // Google Pixel
+  if (name.includes("google") || name.includes("pixel")) {
+    return `3_${name}`;
+  }
+
+  // OnePlus
+  if (name.includes("oneplus")) {
+    return `4_${name}`;
+  }
+
+  // Nothing
+  if (name.includes("nothing")) {
+    return `5_${name}`;
+  }
+
+  return `6_${name}`;
+}
+
 export function getAlertMessages(comparisons) {
   const alerts = comparisons.filter((c) => c.hasAlert);
+
+  // Sort by brand and model order
+  alerts.sort((a, b) => {
+    const keyA = getSortKey(a.message);
+    const keyB = getSortKey(b.message);
+    return keyA.localeCompare(keyB);
+  });
 
   return alerts.map((item, i) => `${i + 1}. ${item.message}`);
 }

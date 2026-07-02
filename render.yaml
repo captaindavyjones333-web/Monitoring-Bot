@@ -13,3 +13,5 @@ services:
         sync: false
       - key: NODE_ENV
         value: production
+      - key: ADMIN_ID
+        sync: false

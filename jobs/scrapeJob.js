@@ -1,4 +1,3 @@
-// jobs/scrapeJob.js
 import { scrapeRedstore } from "../scrapers/redstore.js";
 import { scrapeYerevanMobile } from "../scrapers/ym.js";
 import { scrapeMobileCentre } from "../scrapers/mobile.js";

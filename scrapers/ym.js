@@ -44,13 +44,20 @@ function extractListingProducts($) {
 
   return products;
 }
-
+function normalizeSimLabel(label) {
+  const l = label.toLowerCase();
+  if (l.includes("nano") || l.includes("and/or") || l.includes("1 sim"))
+    return "Nano-Sim";
+  if (/^e[\s-]?sim$/i.test(l.trim())) return "eSim";
+  if (l.includes("dual") || l.includes("2")) return "Dual eSim";
+  return label;
+}
 // --- Detail page parser ---
 
 async function fetchProductVariants(baseName, url) {
   try {
     const res = await axios
-      .get(pageUrl, {
+      .get(url, {
         headers: HEADERS,
         timeout: 15000,
         signal: AbortSignal.timeout(15000),
@@ -133,13 +140,8 @@ async function fetchProductVariants(baseName, url) {
       (a) => a.code === "memory",
     );
     const ramAttr = Object.values(attributes).find((a) => a.code === "gb_ram");
-    console.log(
-      "  ramAttr:",
-      ramAttr ? ramAttr.options.map((o) => o.label) : "NOT FOUND",
-    );
-    console.log(
-      "  memoryAttr:",
-      memoryAttr ? memoryAttr.options.map((o) => o.label) : "NOT FOUND",
+    const simAttr = Object.values(attributes).find(
+      (a) => a.code === "sim_qard_quantity",
     );
 
     if (!memoryAttr)
@@ -199,6 +201,42 @@ async function fetchProductVariants(baseName, url) {
       "  results:",
       results.map((r) => r.name),
     );
+    if (simAttr && memoryAttr) {
+      // Has both storage and SIM variants
+      const results = [];
+      const seen = new Set();
+
+      for (const simOption of simAttr.options) {
+        const simLabel = normalizeSimLabel(simOption.label);
+        for (const storageOption of memoryAttr.options) {
+          const storageLabel = storageOption.label.replace(/\s+/g, "");
+          const key = `${storageLabel}|${simLabel}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+
+          const productId = storageOption.products.find(
+            (id) =>
+              simOption.products.includes(id) && !disabledProductIds.has(id),
+          );
+          if (!productId || !optionPrices[productId]) continue;
+
+          const cash_price = optionPrices[productId].finalPrice?.amount ?? null;
+          const installment_price =
+            optionPrices[productId].creditPrice?.amount ?? null;
+          if (!cash_price) continue;
+
+          results.push({
+            name: `${baseName} ${storageLabel} (${simLabel})`,
+            cash_price,
+            installment_price,
+            source: "yerevanmobile",
+          });
+        }
+      }
+      return results.length > 0
+        ? results
+        : [parseSimpleProduct(baseName, html)].filter(Boolean);
+    }
 
     return results.length > 0
       ? results
@@ -257,7 +295,20 @@ export async function scrapeYerevanMobile() {
   }
 
   // ... rest stays the same
+  // Add manually known products not in filtered listing
+  const MANUAL_URLS = [
+    {
+      name: "Apple iPhone 17",
+      url: "https://www.yerevanmobile.am/am/apple-iphone-17.html",
+    },
+  ];
 
+  for (const manual of MANUAL_URLS) {
+    if (!listingProducts.find((p) => p.url === manual.url)) {
+      listingProducts.push(manual);
+      console.log(`[ym] Added manual: ${manual.name}`);
+    }
+  }
   const allProducts = [];
 
   for (let i = 0; i < listingProducts.length; i++) {

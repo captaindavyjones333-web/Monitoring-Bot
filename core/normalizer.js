@@ -1,5 +1,3 @@
-// normalizer.js
-
 const COLORS = [
   "midnight",
   "starlight",

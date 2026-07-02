@@ -1,6 +1,4 @@
-// scrapers/mobile.js
-import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium";
+import puppeteer from "puppeteer";
 import * as cheerio from "cheerio";
 import { saveCache, markUpdated } from "../core/cache_manager.js";
 

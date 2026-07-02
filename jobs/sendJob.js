@@ -1,4 +1,3 @@
-// jobs/sendJob.js
 import { loadAllCaches, clearAllCaches } from "../core/cache_manager.js";
 import { runComparison } from "../core/comparator.js";
 
