@@ -79,129 +79,97 @@ async function getAllProductUrls(page) {
   return products;
 }
 
-async function fetchVariants(page, listingName, url, listingCashPrice) {
-  console.log(`[mc] -> fetching: ${url}`);
-  try {
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 20000 });
+function extractProductId(url) {
+  if (!url) return null;
+  let m = url.match(/\/(\d+)\/?(?:\?.*)?$/); // slug style: .../33166/
+  if (m) return m[1];
+  m = url.match(/[?&]pid=(\d+)/); // query style: ?...pid=33166
+  return m ? m[1] : null;
+}
 
-    const html = await page.content();
-    const $ = cheerio.load(html);
+function extractRam($) {
+  let ram = null;
+  $(".dlabel").each((_, el) => {
+    const label = $(el).text().trim();
+    if (label === "Օպերատիվ հիշողություն") {
+      ram = $(el).next(".value").text().trim(); // e.g. "8 GB"
+    }
+  });
+  return ram;
+}
 
-    const fullName = $("h1").first().text().trim() || listingName;
-    console.log(`[mc] -> name: "${fullName}"`);
+async function fetchVariants(
+  page,
+  listingName,
+  baseUrl,
+  listingCashPrice,
+  globalVisited,
+) {
+  const queue = [baseUrl];
+  const queued = new Set([extractProductId(baseUrl)]);
 
-    const priceText = $(".price .regular")
-      .clone()
-      .find("span")
-      .remove()
-      .end()
-      .text()
-      .trim();
-    console.log(`[mc] -> priceText: "${priceText}"`);
-    const detailCashPrice = parsePrice(priceText) || listingCashPrice;
-    console.log(`[mc] -> cash: ${detailCashPrice}`);
+  while (queue.length) {
+    const currentUrl = queue.shift();
+    const currentId = extractProductId(currentUrl);
+    if (!currentId || globalVisited.has(currentId)) continue;
 
-    const creditLink = $(".credit_calc_link a").first();
-    const installment_price = creditLink.length
-      ? parseInt(creditLink.attr("data-price"), 10) || null
-      : null;
-    console.log(`[mc] -> installment: ${installment_price}`);
+    try {
+      await page.goto(currentUrl, {
+        waitUntil: "networkidle2",
+        timeout: 20000,
+      });
+      const html = await page.content();
+      const $ = cheerio.load(html);
 
-    // Get variant links
-    const variantLinks = new Set();
-    $("a").each((_, el) => {
-      const href = $(el).attr("href") || "";
-      const text = $(el).text().trim();
-      if (
-        href.includes("mobilecentre.am/product") &&
-        text &&
-        [
-          "Dual eSIM",
-          "Nano-SIM & eSIM",
-          "eSIM",
-          "Nano-SIM",
-          "128GB",
-          "256GB",
-          "512GB",
-          "1TB",
-          "2TB",
-        ].includes(text)
-      ) {
-        variantLinks.add(href);
-      }
-    });
+      const fullName = $("h1").first().text().trim() || listingName;
+      const ram = extractRam($);
+      const nameWithRam =
+        ram && !fullName.toLowerCase().includes("gb/")
+          ? fullName.replace(/(\d+\s*gb)/i, `${ram}/$1`)
+          : fullName;
+      const priceText = $(".price .regular")
+        .clone()
+        .find("span")
+        .remove()
+        .end()
+        .text()
+        .trim();
+      const cashPrice =
+        parsePrice(priceText) ||
+        (currentId === extractProductId(baseUrl) ? listingCashPrice : null);
+      const creditLink = $(".credit_calc_link a").first();
+      const installmentPrice = creditLink.length
+        ? parseInt(creditLink.attr("data-price"), 10) || null
+        : null;
 
-    console.log(`[mc] -> variants found: ${variantLinks.size}`);
-
-    const results = [
-      {
-        name: fullName,
-        cash_price: detailCashPrice,
-        installment_price,
-        source: "mobilecentre",
-      },
-    ];
-
-    if (variantLinks.size === 0) return results;
-
-    const seen = new Set([url]);
-
-    for (const variantUrl of variantLinks) {
-      if (seen.has(variantUrl)) continue;
-      seen.add(variantUrl);
-
-      try {
-        await page.goto(variantUrl, {
-          waitUntil: "networkidle2",
-          timeout: 15000,
-        });
-        const vHtml = await page.content();
-        const v$ = cheerio.load(vHtml);
-
-        const vName = v$("h1").first().text().trim();
-        if (!vName || vName === fullName) continue;
-
-        const vPriceText = v$(".price .regular")
-          .clone()
-          .find("span")
-          .remove()
-          .end()
-          .text()
-          .trim();
-        const vCash = parsePrice(vPriceText) || null;
-        if (!vCash) continue;
-
-        const vCreditLink = v$(".credit_calc_link a").first();
-        const vInstallment = vCreditLink.length
-          ? parseInt(vCreditLink.attr("data-price"), 10) || null
-          : null;
-
-        console.log(
-          `[mc] -> variant: "${vName}" cash:${vCash} installment:${vInstallment}`,
-        );
-        results.push({
-          name: vName,
-          cash_price: vCash,
-          installment_price: vInstallment,
+      if (cashPrice) {
+        globalVisited.set(currentId, {
+          name: nameWithRam ,
+          cash_price: cashPrice,
+          installment_price: installmentPrice,
           source: "mobilecentre",
         });
-        await new Promise((r) => setTimeout(r, 300));
-      } catch (err) {
-        console.warn(`[mc] Variant failed ${variantUrl}: ${err.message}`);
+        console.log(`[mc] -> [${currentId}] "${nameWithRam }" cash:${cashPrice}`);
       }
-    }
 
-    return results;
-  } catch (err) {
-    console.warn(`[mc] Detail page failed ${url}: ${err.message}`);
-    return [
-      {
-        name: listingName,
-        cash_price: listingCashPrice,
-        installment_price: null,
-        source: "mobilecentre",
-      },
-    ];
+      // discover every reachable variant: storage tags, sim tags, color swatches
+      $("a.tag, a.color").each((_, el) => {
+        const href = $(el).attr("href");
+        if (!href) return; // taginactive / unavailable option
+        const absUrl = href.startsWith("http")
+          ? href
+          : new URL(href, currentUrl).toString();
+        const linkedId = extractProductId(absUrl);
+        if (!linkedId || globalVisited.has(linkedId) || queued.has(linkedId))
+          return;
+        queued.add(linkedId);
+        queue.push(absUrl);
+      });
+
+      await new Promise((r) => setTimeout(r, 300));
+    } catch (err) {
+      console.warn(`[mc] Failed ${currentUrl}: ${err.message}`);
+    }
   }
 }
 
@@ -228,33 +196,27 @@ export async function scrapeMobileCentre() {
     const listingProducts = await getAllProductUrls(page);
     console.log(`[mc] ${listingProducts.length} products found on listing`);
 
-    const allProducts = [];
-    const seenUrls = new Set();
+    const globalVisited = new Map(); // key: numeric product id -> product data
 
     for (let i = 0; i < listingProducts.length; i++) {
       const { name, url, cash_price } = listingProducts[i];
-      if (seenUrls.has(url)) continue;
-      seenUrls.add(url);
+      const id = extractProductId(url);
 
-      const variants = await fetchVariants(page, name, url, cash_price);
-      console.log(
-        `[mc] got ${variants.length} variants, first: "${variants[0]?.name}"`,
-      );
-      allProducts.push(...variants);
+      if (id && globalVisited.has(id)) {
+        console.log(`[mc] skip (already crawled): "${name}"`);
+        continue;
+      }
+
+      await fetchVariants(page, name, url, cash_price, globalVisited);
+      console.log(`[mc] total collected so far: ${globalVisited.size}`);
 
       await new Promise((r) => setTimeout(r, 300));
     }
 
-    const seen = new Map();
-    for (const p of allProducts) {
-      if (!seen.has(p.name)) seen.set(p.name, p);
-    }
-
-    const unique = [...seen.values()];
+    const unique = [...globalVisited.values()];
     console.log(`[mc] Total unique products: ${unique.length}`);
     return unique;
   } finally {
     await browser.close();
   }
 }
-

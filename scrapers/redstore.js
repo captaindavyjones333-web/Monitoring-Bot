@@ -35,37 +35,43 @@ async function fetchBrand(brandId) {
   return [...firstPage, ...rest.flat()];
 }
 
+function getSimSuffix(simValue) {
+  const s = simValue.trim().toLowerCase();
+
+  switch (s) {
+    case "2 esim":
+      return " Dual eSim";
+    case "1 sim + esim":
+      return " Nano-Sim";
+    case "2 sim":
+      return " Dual-Sim";
+    case "1 sim":
+      return ""; // base/default variant, no suffix
+    case "without sim card capability":
+      return " eSim"; // eSIM-only, no physical SIM slot
+    default:
+      console.warn(`[redstore] Unrecognized SIM value: "${simValue}"`);
+      return "";
+  }
+}
+
 function normalize(raw) {
   const simAttr = raw.attributes?.find((a) => a.attribute_id === 19);
   const simValue = simAttr?.attribute_value || "";
+  const simSuffix = getSimSuffix(simValue);
 
-  let simSuffix = "";
-  const s = simValue.toLowerCase();
-  if (
-    s.includes("esim") &&
-    !s.includes("nano") &&
-    !s.includes("sim +") &&
-    !s.includes("+ esim") &&
-    !s.includes("1 sim")
-  ) {
-    simSuffix = " eSim";
-  } else if (
-    s.includes("1 sim + esim") ||
-    s.includes("sim + esim") ||
-    s.includes("nano")
-  ) {
-    simSuffix = " Nano-Sim";
-  } else if (s.includes("2 esim") || s.includes("dual esim")) {
-    simSuffix = " Dual eSim";
-  }
-
+  // Strip any generic SIM wording from the raw title — it's often vague
+  // ("eSim") and doesn't reliably reflect the real variant. We rebuild
+  // the SIM portion from the canonical attribute instead.
   const rawName = raw.name;
-  const productName =
-    simSuffix &&
-    !rawName.toLowerCase().includes("esim") &&
-    !rawName.toLowerCase().includes("nano")
-      ? `${rawName}${simSuffix}`
-      : rawName;
+  const cleanedName = rawName
+    .replace(/\b(?:dual\s+)?e[\s-]?sim\b/gi, "")
+    .replace(/\b\d?\s*sim\s*\+\s*e[\s-]?sim\b/gi, "")
+    .replace(/\bnano[\s-]?sim\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const productName = simSuffix ? `${cleanedName}${simSuffix}` : cleanedName;
 
   return {
     name: productName,

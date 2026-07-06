@@ -1,4 +1,9 @@
-import { normalizeName, groupByNormalizedName } from "./normalizer.js";
+import {
+  normalizeName,
+  groupByNormalizedName,
+  getModelKey,
+  getStorageLabel,
+} from "./normalizer.js";
 
 const THRESHOLD_FLAT = 3000; // 3000 AMD flat threshold
 const THRESHOLD_PERCENT = 0.1; // 10% threshold
@@ -96,22 +101,46 @@ function formatPricePair(cash, installment, rsCash, rsInstallment, isRedstore) {
  * @param {Map} groups - output of groupByNormalizedName()
  * @returns {Array<{ key, hasAlert, message }>}
  */
+
+function parseStorageValue(label) {
+  const m = label.match(/(\d+)\s*(gb|tb)/i);
+  if (!m) return 0;
+  const num = parseInt(m[1], 10);
+  return m[2].toLowerCase() === "tb" ? num * 1024 : num;
+}
+
 export function buildComparisons(groups) {
-  const results = [];
+  // Step 1: bucket individual storage-tier groups by model+SIM key
+  const buckets = new Map(); // modelKey -> [{ storageLabel, group }, ...]
 
   for (const [key, group] of groups) {
     const rs = group.sources["redstore"];
+    if (!rs) continue; // nothing to compare against, skip this tier entirely
 
-    // Skip products not listed on Redstore (nothing to compare against)
-    if (!rs) continue;
+    const modelKey = getModelKey(key);
+    if (!buckets.has(modelKey)) buckets.set(modelKey, []);
 
-    const rsCash = rs.cash_price;
-    const rsInstallment = rs.installment_price;
+    const storageMatches = [...key.matchAll(/\d+\s*(?:gb|tb)\b/gi)];
+    const lastMatch = storageMatches[storageMatches.length - 1];
+    const storageLabel = getStorageLabel(key);
+
+    buckets.get(modelKey).push({ storageLabel, group });
+  }
+
+  const results = [];
+
+  for (const [modelKey, tiers] of buckets) {
+    tiers.sort(
+      (a, b) =>
+        parseStorageValue(a.storageLabel) - parseStorageValue(b.storageLabel),
+    );
 
     let hasAlert = false;
     const lines = [];
 
-    const displayName = rs.name
+    const firstRs = tiers[0].group.sources["redstore"];
+    const displayName = firstRs.name
+      .replace(/\b\d+\s*(?:gb|tb)\b/gi, "")
       .replace(
         /\b(Midnight|Starlight|Blue|Black|White|Red|Green|Yellow|Purple|Pink|Gold|Silver|Titanium|Natural|Desert|Ultramarine|Teal|Coral|Graphite|Alpine|Storm|Clay|Lavender|Mint|Sage|Cosmic Orange|Deep Blue|Sierra Blue|Space Gray|Space Grey|Deep Purple|Product Red|Sky Blue|Desert Titanium|Black Titanium|White Titanium|Natural Titanium|Rose Gold|Mocha|Brown|Navy|Orange)\b/gi,
         "",
@@ -121,44 +150,51 @@ export function buildComparisons(groups) {
 
     lines.push(`*${displayName}*`);
 
-    for (const source of SOURCE_ORDER) {
-      const entry = group.sources[source];
-      const label = SOURCE_LABELS[source];
+    for (const { storageLabel, group } of tiers) {
+      const rs = group.sources["redstore"];
+      const rsCash = rs.cash_price;
+      const rsInstallment = rs.installment_price;
 
-      if (!entry) {
-        lines.push(`${label} - Առկա չէ`);
-        continue;
-      }
+      if (storageLabel) lines.push(`\n_${storageLabel}_`);
 
-      const isRS = source === "redstore";
-      const priceStr = formatPricePair(
-        entry.cash_price,
-        entry.installment_price,
-        rsCash,
-        rsInstallment,
-        isRS,
-      );
+      for (const source of SOURCE_ORDER) {
+        const entry = group.sources[source];
+        const label = SOURCE_LABELS[source];
 
-      lines.push(`${label} - ${priceStr}`);
-
-      // Check if any competitor triggered ❗
-      if (!isRS) {
-        if (entry.cash_price) {
-          const flag = getFlag(rsCash, entry.cash_price);
-          if (flag === "❗" || flag === "✅") hasAlert = true;
+        if (!entry) {
+          lines.push(`${label} - Առկա չէ`);
+          continue;
         }
-        if (entry.installment_price) {
-          const flag = getFlag(
-            rsInstallment ?? rsCash,
-            entry.installment_price,
-          );
-          if (flag === "❗" || flag === "✅") hasAlert = true;
+
+        const isRS = source === "redstore";
+        const priceStr = formatPricePair(
+          entry.cash_price,
+          entry.installment_price,
+          rsCash,
+          rsInstallment,
+          isRS,
+        );
+
+        lines.push(`${label} - ${priceStr}`);
+
+        if (!isRS) {
+          if (entry.cash_price) {
+            const flag = getFlag(rsCash, entry.cash_price);
+            if (flag === "❗" || flag === "✅") hasAlert = true;
+          }
+          if (entry.installment_price) {
+            const flag = getFlag(
+              rsInstallment ?? rsCash,
+              entry.installment_price,
+            );
+            if (flag === "❗" || flag === "✅") hasAlert = true;
+          }
         }
       }
     }
 
     results.push({
-      key,
+      key: modelKey,
       hasAlert,
       message: lines.join("\n"),
     });

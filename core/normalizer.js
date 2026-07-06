@@ -85,9 +85,17 @@ export function normalizeName(raw) {
   name = name.replace(/^apple\s+/, "");
 
   // 2b. Normalize Plus variants: "Pro+" / "Pro Plus" / "Pro +" → "pro plus"
+  name = name.replace(/\bflip\s*(\d+)/gi, "flip$1");
+  name = name.replace(/\bfold\s*(\d+)/gi, "fold$1");
   name = name.replace(/\bpro\s*\+/gi, "pro plus");
   name = name.replace(/note\s*\+/gi, "note plus");
   name = name.replace(/\+(?=\s|$)/g, " plus");
+
+  // 2c. Collapse hybrid "Nano-SIM & eSIM" / "1 SIM + eSIM" phrasing into ONE
+  name = name.replace(
+    /(?:1\s*sim\s*\+\s*e[\s-]?sim)|(?:nano[\s-]?sim\s*(?:&|\+|and)\s*e[\s-]?sim)/gi,
+    "nanosim",
+  );
 
   // 3. Extract SIM type FROM parentheses before stripping them
   //    "(eSim)" -> "esim", "(Nano-Sim)" -> "nanosim"
@@ -192,9 +200,6 @@ function getBaseKey(key) {
 }
 
 export function groupByNormalizedName(allProducts) {
-  function stripSimType(key) {
-    return key.replace(/\s+(esim|nanosim|dualsim)$/, "").trim();
-  }
   const groups = new Map();
 
   const items = allProducts.map((p) => ({
@@ -240,4 +245,41 @@ export function groupByNormalizedName(allProducts) {
   }
 
   return groups;
+}
+
+function getTrailingStorageRun(key) {
+  const tokens = key.split(" ");
+  const gbtbIdx = tokens
+    .map((t, i) => (/^\d+(gb|tb)$/i.test(t) ? i : -1))
+    .filter((i) => i >= 0);
+
+  if (gbtbIdx.length === 0) return { label: null, tokens };
+
+  // Take the last contiguous run of gb/tb tokens (covers "12gb 256gb" as
+  // one block — RAM immediately followed by storage — or just "256gb"
+  // alone for Apple, where RAM isn't tracked at all).
+  let start = gbtbIdx[gbtbIdx.length - 1];
+  const end = start;
+  for (let i = gbtbIdx.length - 2; i >= 0; i--) {
+    if (gbtbIdx[i] === start - 1) start = gbtbIdx[i];
+    else break;
+  }
+
+  const runTokens = tokens.slice(start, end + 1);
+  const label = runTokens.map((t) => t.toUpperCase()).join("/");
+  const remaining = [...tokens.slice(0, start), ...tokens.slice(end + 1)];
+  return { label, tokens: remaining };
+}
+
+export function getModelKey(key) {
+  // Groups messages by model+SIM type only. RAM+storage together are
+  // stripped as one block, since RAM is fixed per model — different
+  // storage tiers of the same phone/RAM combo should share one message.
+  const { tokens } = getTrailingStorageRun(key);
+  return tokens.join(" ").replace(/\s+/g, " ").trim();
+}
+
+export function getStorageLabel(key) {
+  // Returns "12GB/256GB" for Android, "256GB" for Apple, or null.
+  return getTrailingStorageRun(key).label;
 }

@@ -52,6 +52,27 @@ function normalizeSimLabel(label) {
   if (l.includes("dual") || l.includes("2")) return "Dual eSim";
   return label;
 }
+
+function extractStaticSimLabel($) {
+  let simText = null;
+  $("li").each((_, el) => {
+    const $li = $(el);
+    const label = $li.find(".type_block").first().text().trim();
+    if (label === "SIM-Քարտ") {
+      simText = $li.find(".result_block").first().text().trim();
+    }
+  });
+  return simText;
+}
+
+function getStaticSimSuffix(simText) {
+  if (!simText) return "";
+  const s = simText.toLowerCase();
+  if (s.includes("esim") && s.includes("nano")) return " Nano-Sim"; // nano tray + eSIM capability
+  if (s.includes("esim")) return " Dual eSim"; // eSIM + eSIM, no physical tray mentioned
+  if (/nano[\s-]?sim\s*\+\s*nano[\s-]?sim/.test(s)) return " Dual-Sim"; // two physical trays, no eSIM
+  return "";
+}
 // --- Detail page parser ---
 
 async function fetchProductVariants(baseName, url) {
@@ -143,6 +164,9 @@ async function fetchProductVariants(baseName, url) {
     const simAttr = Object.values(attributes).find(
       (a) => a.code === "sim_qard_quantity",
     );
+    const staticSimSuffix = !simAttr
+      ? getStaticSimSuffix(extractStaticSimLabel($html))
+      : "";
 
     if (!memoryAttr)
       return [parseSimpleProduct(baseName, html)].filter(Boolean);
@@ -171,7 +195,7 @@ async function fetchProductVariants(baseName, url) {
           if (!cash_price) continue;
 
           results.push({
-            name: `${baseName} ${ramLabel}/${storageLabel}`,
+            name: `${baseName} ${ramLabel}/${storageLabel}${staticSimSuffix}`, // <-- add suffix here
             cash_price,
             installment_price,
             source: "yerevanmobile",
@@ -190,7 +214,7 @@ async function fetchProductVariants(baseName, url) {
         if (!cash_price) continue;
 
         results.push({
-          name: `${baseName} ${storageLabel}`,
+          name: `${baseName} ${storageLabel}${staticSimSuffix}`, // <-- add suffix here
           cash_price,
           installment_price,
           source: "yerevanmobile",
