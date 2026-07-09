@@ -2,11 +2,16 @@ import TelegramBot from "node-telegram-bot-api";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { runScraping } from "../jobs/scrapeJob.js";
+import {
+  runScraping,
+  runWatchesScraping,
+  runHeadphonesScraping,
+  runMacbooksScraping,
+} from "../jobs/scrapeJob.js";
 import { runSendJob } from "../jobs/sendJob.js";
 import { loadAllCaches } from "../core/cache_manager.js";
 import { groupByNormalizedName } from "../core/normalizer.js";
-import { buildComparisons, getAlertMessages } from "../core/comparator.js";
+// import { buildComparisons, getAlertMessages } from "../core/comparator.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -60,7 +65,9 @@ const MAIN_KEYBOARD = {
   reply_markup: {
     keyboard: [
       [{ text: "💰 Արագ ստուգում" }, { text: "🔄 Լրիվ սկանավորում" }],
+      [{ text: "⌚ Ժամացույցներ" }, { text: "🎧 Ականջակալներ" }],
       [{ text: "👥 Օգտատերեր" }],
+      [{ text: "💻 Macbook" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -69,7 +76,10 @@ const MAIN_KEYBOARD = {
 
 const USER_KEYBOARD = {
   reply_markup: {
-    keyboard: [[{ text: "💰 Արագ ստուգում" }, { text: "🔄 Լրիվ սկանավորում" }]],
+    keyboard: [
+      [{ text: "💰 Արագ ստուգում" }, { text: "🔄 Լրիվ սկանավորում" }],
+      [{ text: "⌚ Ժամացույցներ" }, { text: "🎧 Ականջակալներ" }],
+    ],
     resize_keyboard: true,
     persistent: true,
   },
@@ -327,9 +337,10 @@ bot.on("message", async (msg) => {
     );
     try {
       await runScraping();
-      const alerts = await runSendJob(false, false);
+      const { phones, tablets } = await runSendJob(false, false);
+      const total = phones.length + tablets.length;
 
-      if (alerts.length === 0) {
+      if (total === 0) {
         await bot.sendMessage(
           userId,
           "✅ Գնային անհամապատասխանություններ չկան",
@@ -340,14 +351,119 @@ bot.on("message", async (msg) => {
 
       await bot.sendMessage(
         userId,
-        `🚨 ${alerts.length} անհամապատասխանություն հայտնաբերվել է`,
+        `🚨 ${total} անհամապատասխանություն հայտնաբերվել է`,
         USER_KEYBOARD,
       );
-      for (const alert of alerts) {
-        await bot.sendMessage(userId, alert, { parse_mode: "Markdown" });
+
+      if (phones.length > 0) {
+        await bot.sendMessage(userId, "📱 *Հեռախոսներ*", {
+          parse_mode: "Markdown",
+        });
+        await sendAlerts(phones);
+      }
+      if (tablets.length > 0) {
+        await bot.sendMessage(userId, "💻 *Պլանշետներ*", {
+          parse_mode: "Markdown",
+        });
+        await sendAlerts(tablets);
       }
     } catch (err) {
       console.error("[bot] ❌ Full scan failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  if (text === "⌚ Ժամացույցներ") {
+    await bot.sendMessage(
+      userId,
+      "⌚ Սկանավորում եմ ժամացույցները, խնդրում եմ սպասել...",
+    );
+    try {
+      await runWatchesScraping();
+      const { watches } = await runSendJob(false, false);
+
+      if (watches.length === 0) {
+        await bot.sendMessage(
+          userId,
+          "✅ Ժամացույցների գներում անհամապատասխանություններ չկան",
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `🚨 ${watches.length} անհամապատասխանություն հայտնաբերվել է`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(watches);
+    } catch (err) {
+      console.error("[bot] ❌ Watches scan failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  if (text === "🎧 Ականջակալներ") {
+    await bot.sendMessage(
+      userId,
+      "🎧 Սկանավորում եմ ականջակալները, խնդրում եմ սպասել...",
+    );
+    try {
+      await runHeadphonesScraping();
+      const { headphones } = await runSendJob(false, false);
+
+      if (headphones.length === 0) {
+        await bot.sendMessage(
+          userId,
+          "✅ Ականջակալների գներում անհամապատասխանություններ չկան",
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `🚨 ${headphones.length} անհամապատասխանություն հայտնաբերվել է`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(headphones);
+    } catch (err) {
+      console.error("[bot] ❌ Headphones scan failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  if (text === "💻 Macbook") {
+    await bot.sendMessage(
+      userId,
+      "💻 Սկանավորում եմ MacBook-երը, խնդրում եմ սպասել...",
+    );
+    try {
+      await runMacbooksScraping();
+      console.log("[DEBUG] macbook scrape done, cache should be fresh now");
+      const { macbooks } = await runSendJob(false, false);
+      console.log(`[DEBUG] macbooks.length = ${macbooks.length}`);
+
+      if (macbooks.length === 0) {
+        await bot.sendMessage(
+          userId,
+          "✅ MacBook-երի գներում անհամապատասխանություններ չկան",
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `🚨 ${macbooks.length} անհամապատասխանություն հայտնաբերվել է`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(macbooks);
+    } catch (err) {
+      console.error("[bot] ❌ Macbooks scan failed:", err.message);
       await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
     }
     return;

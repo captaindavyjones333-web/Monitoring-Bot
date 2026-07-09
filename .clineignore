@@ -1,0 +1,73 @@
+# ==========================================
+# 1. DEPENDENCY DIRECTORIES (Heavy Token Burners)
+# ==========================================
+node_modules/
+**/node_modules/
+vendor/
+.venv/
+env/
+.pnp/
+.yarn/
+
+# ==========================================
+# 2. BUILD ARTIFACTS & CACHES (Noisy & Pointless)
+# ==========================================
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.turbo/
+*.min.js
+*.min.css
+*.map
+
+# ==========================================
+# 3. LARGE DATA & LOCKFILES
+# ==========================================
+# Lockfiles change constantly and throw off AI context windows
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+composer.lock
+Cargo.lock
+
+# Data files
+*.csv
+*.xlsx
+*.sqlite
+*.jsonl
+*.parquet
+
+# ==========================================
+# 4. SECURITY & ENVIRONMENT (Crucial)
+# ==========================================
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+
+# ==========================================
+# 5. TESTING & LOGS
+# ==========================================
+coverage/
+cache/
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# ==========================================
+# 6. MEDIA & BINARIES (LLMs can't natively read these line-by-line)
+# ==========================================
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.mp4
+*.mp3
+*.pdf
+*.zip
+*.tar.gz

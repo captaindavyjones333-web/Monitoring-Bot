@@ -1,51 +1,48 @@
 import { loadAllCaches, clearAllCaches } from "../core/cache_manager.js";
 import { runComparison } from "../core/comparator.js";
 
-// In-memory store of previously sent alert keys
 let previousAlertKeys = new Set();
 
-/**
- * Run comparison and return alert messages.
- * @param {boolean} clearAfter - clear cache after reading
- * @param {boolean} onlyNew - only return alerts not in previous batch
- * @returns {string[]} alert messages
- */
 export async function runSendJob(clearAfter = false, onlyNew = false) {
   console.log("[send] 📦 Loading cache...");
   const allProducts = loadAllCaches();
 
   if (allProducts.length === 0) {
     console.warn("[send] ⚠️  No products in cache. Run scrape job first.");
-    return [];
+    return { phones: [], tablets: [], watches: [], headphones: [], macbooks: [] };
   }
 
   console.log(`[send] 🔍 Comparing ${allProducts.length} products...`);
-  const alertMessages = runComparison(allProducts);
-  console.log(`[send] 🚨 ${alertMessages.length} total alerts found`);
+  const { phones, tablets, watches, headphones, macbooks } = runComparison(allProducts);
 
-  let messagesToSend = alertMessages;
+  console.log(
+    `[send] 🚨 ${phones.length} phone, ${tablets.length} tablet, ${watches.length} watch, ${headphones.length} headphone, ${macbooks.length} macbook alerts`,
+  );
 
-  const getKey = (msg) =>
-    msg
-      .replace(/^\d+\.\s*/, "")
-      .split("\n")[0]
-      .trim();
+  const getKey = (msg) => msg.replace(/^\d+\.\s*/, "").split("\n")[0].trim();
+
+  let result = { phones, tablets, watches, headphones, macbooks };
 
   if (onlyNew) {
-    messagesToSend = alertMessages.filter(
-      (msg) => !previousAlertKeys.has(getKey(msg)),
-    );
-    console.log(`[send] 🆕 ${messagesToSend.length} new alerts`);
+    result = {
+      phones: phones.filter((m) => !previousAlertKeys.has(getKey(m))),
+      tablets: tablets.filter((m) => !previousAlertKeys.has(getKey(m))),
+      watches: watches.filter((m) => !previousAlertKeys.has(getKey(m))),
+      headphones: headphones.filter((m) => !previousAlertKeys.has(getKey(m))),
+      macbooks: macbooks.filter((m) => !previousAlertKeys.has(getKey(m))),
+    };
   }
 
-  previousAlertKeys = new Set(alertMessages.map((msg) => getKey(msg)));
+  previousAlertKeys = new Set(
+    [...phones, ...tablets, ...watches, ...headphones, ...macbooks].map(getKey),
+  );
 
   if (clearAfter) {
     clearAllCaches();
     console.log("[send] 🗑️  Cache cleared");
   }
 
-  return messagesToSend;
+  return result;
 }
 
 export function resetPreviousAlerts() {

@@ -10,7 +10,15 @@ if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
-const SOURCES = ["redstore", "yerevanmobile", "mobilecentre", "allsell", "3dplanet"];
+const SOURCES = [
+  "redstore",
+  "yerevanmobile",
+  "mobilecentre",
+  "allsell",
+  "3dplanet",
+  "icentre",
+  "ispace",
+];
 
 // ─── Write ────────────────────────────────────────────────────────────────────
 
@@ -21,7 +29,9 @@ const SOURCES = ["redstore", "yerevanmobile", "mobilecentre", "allsell", "3dplan
  */
 export function saveCache(source, products) {
   if (!SOURCES.includes(source)) {
-    throw new Error(`Unknown source: "${source}". Allowed: ${SOURCES.join(", ")}`);
+    throw new Error(
+      `Unknown source: "${source}". Allowed: ${SOURCES.join(", ")}`,
+    );
   }
 
   const filePath = path.join(CACHE_DIR, `${source}.json`);

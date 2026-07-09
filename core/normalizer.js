@@ -27,6 +27,8 @@ const COLORS = [
   "pink",
   "navy",
   "orange",
+  "gray",
+  "grey",
   "space gray",
   "space grey",
   "sierra blue",
@@ -83,10 +85,21 @@ export function normalizeName(raw) {
 
   // 2. Strip "Apple" brand prefix
   name = name.replace(/^apple\s+/, "");
+  name = name.replace(/\bwi[\s-]?fi\s*\+\s*cellular\b/gi, "cellular");
 
   // 2b. Normalize Plus variants: "Pro+" / "Pro Plus" / "Pro +" → "pro plus"
-  name = name.replace(/\bflip\s*(\d+)/gi, "flip$1");
-  name = name.replace(/\bfold\s*(\d+)/gi, "fold$1");
+  name = name.replace(/\bflip\s*(\d{1,2})\b/gi, "flip$1");
+  name = name.replace(/\bfold\s*(\d{1,2})\b/gi, "fold$1");
+  name = name.replace(/\bwatch\s*(\d{1,2})\b/gi, "watch$1");
+  name = name.replace(/\bse\s*(\d{1,2})\b/gi, "se$1");
+  name = name.replace(/\bbuds\s*(\d{1,2})\b/gi, "buds$1");
+  name = name.replace(/(\d+)(?:st|nd|rd|th)\s+generation\b/gi, "$1");
+  // Strip manufacture year mentions (e.g. "SE 2024", "SE2 2024") — the
+  // generation number already conveys this, and different stores are
+  // inconsistent about whether they include the year at all.
+  name = name.replace(/\b(19|20)\d{2}\b/g, "");
+  name = name.replace(/\s+/g, " ").trim();
+
   name = name.replace(/\bpro\s*\+/gi, "pro plus");
   name = name.replace(/note\s*\+/gi, "note plus");
   name = name.replace(/\+(?=\s|$)/g, " plus");
@@ -110,10 +123,19 @@ export function normalizeName(raw) {
   // 4. Normalize bare SIM tokens outside parentheses
   name = name.replace(/\be[\s-]?sim\b/gi, "esim");
   name = name.replace(/\bnano[\s-]?sim\b/gi, "nanosim");
+  // Normalize tablet connectivity wording so different phrasing across
+  // stores collapses to the same token for matching purposes.
+  name = name.replace(/\bwi[\s-]?fi\b/gi, "wifi");
+  name = name.replace(/\b4g\b/gi, "lte");
+  name = name.replace(/\blte\b/gi, "lte");
+  name = name.replace(/\b5g\b/gi, "5g");
 
   // For others keep RAM as part of key since 8GB/256GB ≠ 12GB/256GB
   // 5. RAM stripping — only for Apple, keep RAM for Android
-  const isApple = name.startsWith("iphone") || name.startsWith("apple");
+  const isApple =
+    name.startsWith("iphone") ||
+    name.startsWith("ipad") ||
+    name.startsWith("apple");
   if (isApple) {
     name = name.replace(/\b\d+\s*gb\s*[\/+]\s*(\d+\s*gb)\b/gi, "$1");
     name = name.replace(/\b\d+\s*[\/+]\s*(\d+\s*gb)\b/gi, "$1");
@@ -125,6 +147,7 @@ export function normalizeName(raw) {
 
   // 6. Normalize storage spacing: "128 gb" -> "128gb"
   name = name.replace(/(\d+)\s*gb/gi, "$1gb");
+  name = name.replace(/(\d+)\s*mm\b/gi, "$1mm");
 
   // 7. Remove multi-word colors first
   for (const color of MULTIWORD_COLORS) {
@@ -135,6 +158,9 @@ export function normalizeName(raw) {
   for (const color of COLORS) {
     name = name.replace(wordBoundaryRegex(color), "");
   }
+
+  name = name.replace(/\bband\b/gi, "");
+  name = name.replace(/\s+/g, " ").trim();
 
   // 9. Remove connectivity suffixes (NOT esim/nanosim)
   for (const conn of CONNECTIVITY) {
@@ -150,6 +176,53 @@ export function normalizeName(raw) {
     .replace(/\s+/g, " ")
     .trim();
 
+  name = name.replace(/\b(lte|5g|nanosim|dualsim|cellular)\b/g, "cellular");
+
+  // A cellular tablet always has wifi too — drop the redundant "wifi"
+  // token so it doesn't fragment the match key.
+  if (/\bcellular\b/.test(name)) {
+    name = name
+      .replace(/\bwifi\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // Strip vendor SKU/model codes that only some stores include
+  // (Samsung "X133", "X230"...; Apple "MXNA3", "MD3Y4"...). Guarded by
+  // length + mixed letter/digit check so it never touches real model
+  // identifiers like "a11", "s10", or Apple chip names "m3"/"m4"/"m5".
+  name = name.replace(/\bsm[\s-]?[a-z0-9]{3,6}\b/gi, "");
+  name = name.replace(/\b[xmlr][a-z0-9]{2,6}\b/gi, (tok) => {
+    const hasDigit = /\d/.test(tok);
+    const hasLetter = /[a-z]/i.test(tok);
+    return hasDigit && hasLetter ? "" : tok;
+  });
+  name = name.replace(/\s+/g, " ").trim();
+  name = name.replace(/\bgps\b/gi, "");
+  name = name.replace(/\b(aluminium|titanium|stainless steel)\s+case\b/gi, "");
+  name = name.replace(/\bwith\s+.*?\s+sport\s+(band|loop)\b/gi, "");
+  name = name.replace(/\bs\/m\b/gi, "");
+  name = name.replace(/\bm\/l\b/gi, "");
+  name = name.replace(/\bheadphones?\b/gi, "");
+  name = name.replace(/ականջակալ/gi, "");
+  name = name.replace(/\bin[\s-]?ear\b/gi, "");
+  name = name.replace(/\bon[\s-]?ear\b/gi, "");
+  name = name.replace(/\bover[\s-]?ear\b/gi, "");
+  name = name.replace(/\bwireless\b/gi, "");
+  name = name.replace(/\bbt\b/gi, "");
+  name = name.replace(/\busb\s*type[\s-]?c\b/gi, "");
+  name = name.replace(/\btype[\s-]?c\b/gi, "");
+  name = name.replace(/\s+/g, " ").trim();
+  // Collapse every phrasing of Active Noise Cancellation into one
+  // canonical token, so "with Active Noise Cancellation", "(Active NC)",
+  // and bare "ANC" all produce the same match key.
+  name = name.replace(
+    /\(?\s*with\s+active\s+noise\s+cancellation\s*\)?/gi,
+    " anc ",
+  );
+  name = name.replace(/\(?\s*active\s*nc\s*\)?/gi, " anc ");
+  name = name.replace(/\bactive\s+noise\s+cancellation\b/gi, "anc");
+  name = name.replace(/\s+/g, " ").trim();
   // 11. Reorder tokens: storage before sim type
   //     "iphone 17 pro max esim 256gb" -> "iphone 17 pro max 256gb esim"
   name = reorderTokens(name);
@@ -173,8 +246,12 @@ function reorderTokens(name) {
   const otherTokens = [];
 
   for (const token of name.split(" ")) {
-    if (/^\d+(gb|tb)$/i.test(token)) storageTokens.push(token);
-    else if (["esim", "nanosim", "dualsim"].includes(token))
+    if (/^\d+(gb|tb|mm)$/i.test(token)) storageTokens.push(token);
+    else if (
+      ["esim", "nanosim", "dualsim", "wifi", "lte", "5g", "cellular"].includes(
+        token,
+      )
+    )
       simTokens.push(token);
     else otherTokens.push(token);
   }
