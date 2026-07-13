@@ -27,6 +27,24 @@ import { scrapeAllsellMacbooks } from "../scrapers/allsell/macbooks.js";
 import { scrape3DPlanetMacbooks } from "../scrapers/d3planet/macbooks.js";
 import { scrapeIcentreMacbooks } from "../scrapers/icentre/macbooks.js";
 import { scrapeIspaceMacbooks } from "../scrapers/ispace/macbooks.js";
+import { scrapeRedstoreSpeakers } from "../scrapers/redstore/speakers.js";
+import { scrapeYerevanMobileSpeakers } from "../scrapers/yerevanmobile/speakers.js";
+import { scrapeMobileCentreSpeakers } from "../scrapers/mobilecentre/speakers.js";
+import { scrapeAllsellSpeakers } from "../scrapers/allsell/speakers.js";
+import { scrape3DPlanetSpeakers } from "../scrapers/d3planet/speakers.js";
+import { scrapeEldoradoSpeakers } from "../scrapers/eldorado/speakers.js";
+import { scrapeRedstoreTvs } from "../scrapers/redstore/tvs.js";
+import { scrapeYerevanMobileTvs } from "../scrapers/yerevanmobile/tvs.js";
+import { scrapeMobileCentreTvs } from "../scrapers/mobilecentre/tvs.js";
+import { scrapeAllsellTvs } from "../scrapers/allsell/tvs.js";
+import { scrapeEldoradoTvs } from "../scrapers/eldorado/tvs.js";
+import { scrapeRedstoreDyson } from "../scrapers/redstore/dyson.js";
+import { scrapeYerevanMobileDyson } from "../scrapers/yerevanmobile/dyson.js";
+import { scrapeMobileCentreDyson } from "../scrapers/mobilecentre/dyson.js";
+import { scrapeAllsellDyson } from "../scrapers/allsell/dyson.js";
+import { scrape3DPlanetDyson } from "../scrapers/d3planet/dyson.js";
+import { scrapeEldoradoDyson } from "../scrapers/eldorado/dyson.js";
+import { scrapeZigzagDyson } from "../scrapers/zigzag/dyson.js";
 
 async function scrapeCategoryIntoSource(source, category, fn) {
   try {
@@ -58,6 +76,72 @@ async function scrapeCategoryIntoSource(source, category, fn) {
   } catch (err) {
     console.error(`[scrape] ❌ ${source}/${category} failed: ${err.message}`);
   }
+}
+
+export async function runDysonScraping() {
+  console.log("[scrape] 🔄 Starting Dyson-only scrape...");
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "dyson", scrapeRedstoreDyson),
+    scrapeCategoryIntoSource(
+      "yerevanmobile",
+      "dyson",
+      scrapeYerevanMobileDyson,
+    ),
+    scrapeCategoryIntoSource("allsell", "dyson", scrapeAllsellDyson),
+  ]);
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("mobilecentre", "dyson", scrapeMobileCentreDyson),
+    scrapeCategoryIntoSource("3dplanet", "dyson", scrape3DPlanetDyson),
+    scrapeCategoryIntoSource("eldorado", "dyson", scrapeEldoradoDyson),
+    scrapeCategoryIntoSource("zigzag", "dyson", scrapeZigzagDyson),
+  ]);
+
+  console.log("[scrape] ✅ Dyson-only scrape complete");
+}
+
+export async function runTvsScraping() {
+  console.log("[scrape] 🔄 Starting tvs-only scrape...");
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "tvs", scrapeRedstoreTvs),
+    scrapeCategoryIntoSource("yerevanmobile", "tvs", scrapeYerevanMobileTvs),
+    scrapeCategoryIntoSource("allsell", "tvs", scrapeAllsellTvs),
+  ]);
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("mobilecentre", "tvs", scrapeMobileCentreTvs),
+    scrapeCategoryIntoSource("eldorado", "tvs", scrapeEldoradoTvs),
+  ]);
+
+  console.log("[scrape] ✅ Tvs-only scrape complete");
+}
+
+export async function runSpeakersScraping() {
+  console.log("[scrape] 🔄 Starting speakers-only scrape...");
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "speakers", scrapeRedstoreSpeakers),
+    scrapeCategoryIntoSource(
+      "yerevanmobile",
+      "speakers",
+      scrapeYerevanMobileSpeakers,
+    ),
+    scrapeCategoryIntoSource("allsell", "speakers", scrapeAllsellSpeakers),
+  ]);
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource(
+      "mobilecentre",
+      "speakers",
+      scrapeMobileCentreSpeakers,
+    ),
+    scrapeCategoryIntoSource("3dplanet", "speakers", scrape3DPlanetSpeakers),
+    scrapeCategoryIntoSource("eldorado", "speakers", scrapeEldoradoSpeakers),
+  ]);
+
+  console.log("[scrape] ✅ Speakers-only scrape complete");
 }
 
 export async function runMacbooksScraping() {

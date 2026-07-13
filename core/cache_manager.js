@@ -18,6 +18,8 @@ const SOURCES = [
   "3dplanet",
   "icentre",
   "ispace",
+  "eldorado",
+  "zigzag"
 ];
 
 // ─── Write ────────────────────────────────────────────────────────────────────

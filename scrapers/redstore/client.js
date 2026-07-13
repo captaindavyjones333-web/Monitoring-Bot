@@ -43,7 +43,20 @@ export async function fetchAllBrands(categoryEndpoint, brandIds, normalize) {
   for (const [brand, id] of Object.entries(brandIds)) {
     try {
       const products = await fetchBrandProducts(categoryEndpoint, id);
-      results.push(...products.map(normalize));
+      const normalized = products
+        .map((raw) => {
+          try {
+            return normalize(raw);
+          } catch (err) {
+            console.warn(
+              `[redstore/${categoryEndpoint}] skipped malformed product for brand ${brand}: ${err.message}`,
+            );
+            return null;
+          }
+        })
+        .filter(Boolean);
+
+      results.push(...normalized);
     } catch (err) {
       console.error(
         `[redstore/${categoryEndpoint}] failed to fetch brand ${brand}: ${err.message}`,

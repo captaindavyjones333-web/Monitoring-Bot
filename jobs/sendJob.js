@@ -9,19 +9,40 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
 
   if (allProducts.length === 0) {
     console.warn("[send] ⚠️  No products in cache. Run scrape job first.");
-    return { phones: [], tablets: [], watches: [], headphones: [], macbooks: [] };
+    return {
+      phones: [],
+      tablets: [],
+      watches: [],
+      headphones: [],
+      macbooks: [],
+      speakers: [],
+      tvs: [],
+      dyson: [],
+    };
   }
 
   console.log(`[send] 🔍 Comparing ${allProducts.length} products...`);
-  const { phones, tablets, watches, headphones, macbooks } = runComparison(allProducts);
+  let comparisonResult;
+  try {
+    comparisonResult = runComparison(allProducts);
+  } catch (err) {
+    console.error("[send] ❌ runComparison crashed:", err.message);
+    console.error(err.stack);
+    throw err;
+  }
+  const { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson } = runComparison(allProducts);
 
   console.log(
-    `[send] 🚨 ${phones.length} phone, ${tablets.length} tablet, ${watches.length} watch, ${headphones.length} headphone, ${macbooks.length} macbook alerts`,
+    `[send] 🚨 ${phones.length} phone, ${tablets.length} tablet, ${watches.length} watch, ${headphones.length} headphone, ${macbooks.length} macbook, ${speakers.length} speaker, ${tvs.length} tv, ${dyson.length} dyson`,
   );
 
-  const getKey = (msg) => msg.replace(/^\d+\.\s*/, "").split("\n")[0].trim();
+  const getKey = (msg) =>
+    msg
+      .replace(/^\d+\.\s*/, "")
+      .split("\n")[0]
+      .trim();
 
-  let result = { phones, tablets, watches, headphones, macbooks };
+  let result = { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson };
 
   if (onlyNew) {
     result = {
@@ -30,11 +51,23 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       watches: watches.filter((m) => !previousAlertKeys.has(getKey(m))),
       headphones: headphones.filter((m) => !previousAlertKeys.has(getKey(m))),
       macbooks: macbooks.filter((m) => !previousAlertKeys.has(getKey(m))),
+      speakers: speakers.filter((m) => !previousAlertKeys.has(getKey(m))),
+      tvs: tvs.filter((m) => !previousAlertKeys.has(getKey(m))),
+      dyson: dyson.filter((m) => !previousAlertKeys.has(getKey(m))),
     };
   }
 
   previousAlertKeys = new Set(
-    [...phones, ...tablets, ...watches, ...headphones, ...macbooks].map(getKey),
+    [
+      ...phones,
+      ...tablets,
+      ...watches,
+      ...headphones,
+      ...macbooks,
+      ...speakers,
+      ...tvs,
+      ...dyson,
+    ].map(getKey),
   );
 
   if (clearAfter) {

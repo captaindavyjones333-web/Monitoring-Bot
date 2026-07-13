@@ -4,8 +4,10 @@ import {
   getModelKey,
   getStorageLabel,
 } from "./normalizer.js";
-import { detectCategory, MACBOOK_REGEX } from "./categoryDetector.js";
+import { detectCategory, MACBOOK_REGEX, TV_REGEX } from "./categoryDetector.js";
 import { extractModelCode } from "./modelCode.js";
+import { extractTvModelCode } from "./tvModelCode.js";
+import { extractDysonKey } from "./dysonModelCode.js";
 
 const THRESHOLD_FLAT = 3000;
 const THRESHOLD_PERCENT = 0.1;
@@ -18,6 +20,8 @@ const SOURCE_LABELS = {
   "3dplanet": "3D",
   icentre: "iCentre",
   ispace: "iSpace",
+  eldorado: "Eldorado",
+  zigzag: "Zigzag",
 };
 
 const SOURCE_ORDER = [
@@ -28,6 +32,8 @@ const SOURCE_ORDER = [
   "3dplanet",
   "icentre",
   "ispace",
+  "eldorado",
+  "zigzag"
 ];
 
 function getFlag(rsPrice, competitorPrice) {
@@ -244,15 +250,11 @@ function extractStorageFromGroup(group) {
     const name = entry.name;
 
     // Match patterns like "/16GB/512GB/" or "/16GB RAM/1TB/"
-    const slashMatch = name.match(
-      /\/\d+\s*GB\s*(?:RAM)?\/([\d.]+\s*[GT]B)\b/i,
-    );
+    const slashMatch = name.match(/\/\d+\s*GB\s*(?:RAM)?\/([\d.]+\s*[GT]B)\b/i);
     if (slashMatch) return slashMatch[1].replace(/\s+/g, "").toUpperCase();
 
     // Match patterns like "16 GB, 512 GB" or "16 GB, 1 TB"
-    const commaMatch = name.match(
-      /\d+\s*GB\s*,\s*([\d.]+\s*[GT]B)\b/i,
-    );
+    const commaMatch = name.match(/\d+\s*GB\s*,\s*([\d.]+\s*[GT]B)\b/i);
     if (commaMatch) return commaMatch[1].replace(/\s+/g, "").toUpperCase();
 
     // Match patterns like "512GB SSD" or "1TB SSD"
@@ -260,9 +262,7 @@ function extractStorageFromGroup(group) {
     if (ssdMatch) return ssdMatch[1].replace(/\s+/g, "").toUpperCase();
 
     // Match patterns like "8GB/256GB" (without leading slash)
-    const ramStorageMatch = name.match(
-      /\b\d+\s*GB\s*\/\s*([\d.]+\s*[GT]B)\b/i,
-    );
+    const ramStorageMatch = name.match(/\b\d+\s*GB\s*\/\s*([\d.]+\s*[GT]B)\b/i);
     if (ramStorageMatch)
       return ramStorageMatch[1].replace(/\s+/g, "").toUpperCase();
   }
@@ -391,6 +391,193 @@ export function buildMacbookComparisons(groups) {
   return results;
 }
 
+export function groupTvsByCode(products) {
+  const redstoreProducts = products.filter((p) => p.source === "redstore");
+  const otherProducts = products.filter((p) => p.source !== "redstore");
+
+  const groups = new Map();
+
+  for (const product of redstoreProducts) {
+    const code = extractTvModelCode(product.name);
+    if (!code) continue;
+
+    if (!groups.has(code)) {
+      groups.set(code, { normalized: code, code, sources: {} });
+    }
+    groups.get(code).sources["redstore"] = {
+      name: product.name,
+      cash_price: product.cash_price ?? null,
+      installment_price: product.installment_price ?? null,
+    };
+  }
+
+  for (const product of otherProducts) {
+    const upperName = product.name.toUpperCase();
+    let matchedCode = null;
+
+    for (const code of groups.keys()) {
+      if (upperName.includes(code)) {
+        matchedCode = code;
+        break;
+      }
+    }
+    if (!matchedCode) continue;
+
+    const group = groups.get(matchedCode);
+    const existing = group.sources[product.source];
+    if (existing) {
+      const newCash = product.cash_price ?? Infinity;
+      const oldCash = existing.cash_price ?? Infinity;
+      if (newCash >= oldCash) continue;
+    }
+
+    group.sources[product.source] = {
+      name: product.name,
+      cash_price: product.cash_price ?? null,
+      installment_price: product.installment_price ?? null,
+    };
+  }
+
+  return groups;
+}
+
+export function buildTvComparisons(groups) {
+  const results = [];
+
+  for (const [key, group] of groups) {
+    const rs = group.sources["redstore"];
+    if (!rs) continue;
+
+    const rsCash = rs.cash_price;
+    const rsInstallment = rs.installment_price;
+
+    let hasAlert = false;
+    const lines = [];
+
+    const displayName = rs.name
+      .replace(/\(.*?\)/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    lines.push(`*${displayName} [${group.code}]*`);
+
+    for (const source of SOURCE_ORDER) {
+      const entry = group.sources[source];
+      const label = SOURCE_LABELS[source];
+      if (!label) continue;
+
+      if (!entry) {
+        lines.push(`${label} - Առկա չէ`);
+        continue;
+      }
+
+      const isRS = source === "redstore";
+      const priceStr = formatPricePair(
+        entry.cash_price,
+        entry.installment_price,
+        rsCash,
+        rsInstallment,
+        isRS,
+      );
+      lines.push(`${label} - ${priceStr}`);
+
+      if (!isRS) {
+        if (entry.cash_price) {
+          const flag = getFlag(rsCash, entry.cash_price);
+          if (flag === "❗" || flag === "✅") hasAlert = true;
+        }
+        if (entry.installment_price) {
+          const flag = getFlag(
+            rsInstallment ?? rsCash,
+            entry.installment_price,
+          );
+          if (flag === "❗" || flag === "✅") hasAlert = true;
+        }
+      }
+    }
+
+    results.push({ key, hasAlert, message: lines.join("\n") });
+  }
+
+  return results;
+}
+
+export function groupDysonByKey(products) {
+  const groups = new Map();
+
+  for (const product of products) {
+    const key = extractDysonKey(product.name);
+    if (!key) continue; // accessories/non-device products, e.g. "Display Stand"
+
+    if (!groups.has(key)) {
+      groups.set(key, { normalized: key, code: key, sources: {} });
+    }
+
+    const group = groups.get(key);
+    const existing = group.sources[product.source];
+    if (existing) {
+      const newCash = product.cash_price ?? Infinity;
+      const oldCash = existing.cash_price ?? Infinity;
+      if (newCash >= oldCash) continue;
+    }
+
+    group.sources[product.source] = {
+      name: product.name,
+      cash_price: product.cash_price ?? null,
+      installment_price: product.installment_price ?? null,
+    };
+  }
+
+  return groups;
+}
+
+export function buildDysonComparisons(groups) {
+  const results = [];
+
+  for (const [key, group] of groups) {
+    const rs = group.sources["redstore"];
+    if (!rs) continue;
+
+    const rsCash = rs.cash_price;
+    const rsInstallment = rs.installment_price;
+
+    let hasAlert = false;
+    const lines = [];
+
+    const displayName = rs.name.replace(/\s+/g, " ").trim();
+    lines.push(`*${displayName}*`);
+
+    for (const source of SOURCE_ORDER) {
+      const entry = group.sources[source];
+      const label = SOURCE_LABELS[source];
+      if (!label) continue;
+
+      if (!entry) {
+        lines.push(`${label} - Առկա չէ`);
+        continue;
+      }
+
+      const isRS = source === "redstore";
+      const priceStr = formatPricePair(entry.cash_price, entry.installment_price, rsCash, rsInstallment, isRS);
+      lines.push(`${label} - ${priceStr}`);
+
+      if (!isRS) {
+        if (entry.cash_price) {
+          const flag = getFlag(rsCash, entry.cash_price);
+          if (flag === "❗" || flag === "✅") hasAlert = true;
+        }
+        if (entry.installment_price) {
+          const flag = getFlag(rsInstallment ?? rsCash, entry.installment_price);
+          if (flag === "❗" || flag === "✅") hasAlert = true;
+        }
+      }
+    }
+
+    results.push({ key, hasAlert, message: lines.join("\n") });
+  }
+
+  return results;
+}
+
 // ─── Sorting / final message assembly ──────────────────────────────────────
 
 const IPHONE_ORDER = [
@@ -439,6 +626,9 @@ export function splitAlertsByCategory(comparisons) {
     watches: [],
     headphones: [],
     macbooks: [],
+    speakers: [],
+    tvs: [],
+    dyson: [],
   };
 
   for (const item of alerts) {
@@ -452,6 +642,9 @@ export function splitAlertsByCategory(comparisons) {
     watches: buckets.watches.map((msg, i) => `${i + 1}. ${msg}`),
     headphones: buckets.headphones.map((msg, i) => `${i + 1}. ${msg}`),
     macbooks: buckets.macbooks.map((msg, i) => `${i + 1}. ${msg}`),
+    speakers: buckets.speakers.map((msg, i) => `${i + 1}. ${msg}`),
+    tvs: buckets.tvs.map((msg, i) => `${i + 1}. ${msg}`),
+    dyson: buckets.dyson.map((msg, i) => `${i + 1}. ${msg}`),
   };
 }
 
@@ -462,7 +655,16 @@ export function splitAlertsByCategory(comparisons) {
  */
 export function runComparison(allProducts) {
   const macbookProducts = allProducts.filter((p) => MACBOOK_REGEX.test(p.name));
-  const otherProducts = allProducts.filter((p) => !MACBOOK_REGEX.test(p.name));
+  const tvProducts = allProducts.filter((p) => TV_REGEX.test(p.name) && !MACBOOK_REGEX.test(p.name));
+  const dysonProducts = allProducts.filter(
+    (p) => /\bdyson\b/i.test(p.name) && !MACBOOK_REGEX.test(p.name) && !TV_REGEX.test(p.name),
+  );
+  const otherProducts = allProducts.filter(
+    (p) =>
+      !MACBOOK_REGEX.test(p.name) &&
+      !TV_REGEX.test(p.name) &&
+      !/\bdyson\b/i.test(p.name),
+  );
 
   const otherGroups = groupByNormalizedName(otherProducts);
   const otherComparisons = buildComparisons(otherGroups);
@@ -470,6 +672,17 @@ export function runComparison(allProducts) {
   const macbookGroups = groupMacbooksByCode(macbookProducts);
   const macbookComparisons = buildMacbookComparisons(macbookGroups);
 
-  const allComparisons = [...otherComparisons, ...macbookComparisons];
+  const tvGroups = groupTvsByCode(tvProducts);
+  const tvComparisons = buildTvComparisons(tvGroups);
+
+  const dysonGroups = groupDysonByKey(dysonProducts);
+  const dysonComparisons = buildDysonComparisons(dysonGroups);
+
+  const allComparisons = [
+    ...otherComparisons,
+    ...macbookComparisons,
+    ...tvComparisons,
+    ...dysonComparisons,
+  ];
   return splitAlertsByCategory(allComparisons);
 }

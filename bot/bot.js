@@ -7,6 +7,9 @@ import {
   runWatchesScraping,
   runHeadphonesScraping,
   runMacbooksScraping,
+  runSpeakersScraping,
+  runTvsScraping,
+  runDysonScraping,
 } from "../jobs/scrapeJob.js";
 import { runSendJob } from "../jobs/sendJob.js";
 import { loadAllCaches } from "../core/cache_manager.js";
@@ -68,6 +71,9 @@ const MAIN_KEYBOARD = {
       [{ text: "⌚ Ժամացույցներ" }, { text: "🎧 Ականջակալներ" }],
       [{ text: "👥 Օգտատերեր" }],
       [{ text: "💻 Macbook" }],
+      [{ text: "🔊 Բարձրախոսներ" }],
+      [{ text: "📺 Հեռուստացույցներ" }],
+      [{ text: "🌀 Dyson" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -79,6 +85,10 @@ const USER_KEYBOARD = {
     keyboard: [
       [{ text: "💰 Արագ ստուգում" }, { text: "🔄 Լրիվ սկանավորում" }],
       [{ text: "⌚ Ժամացույցներ" }, { text: "🎧 Ականջակալներ" }],
+      [{ text: "💻 Macbook" }],
+      [{ text: "🔊 Բարձրախոսներ" }],
+      [{ text: "📺 Հեռուստացույցներ" }],
+      [{ text: "🌀 Dyson" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -443,10 +453,7 @@ bot.on("message", async (msg) => {
     );
     try {
       await runMacbooksScraping();
-      console.log("[DEBUG] macbook scrape done, cache should be fresh now");
       const { macbooks } = await runSendJob(false, false);
-      console.log(`[DEBUG] macbooks.length = ${macbooks.length}`);
-
       if (macbooks.length === 0) {
         await bot.sendMessage(
           userId,
@@ -464,6 +471,99 @@ bot.on("message", async (msg) => {
       await sendAlerts(macbooks);
     } catch (err) {
       console.error("[bot] ❌ Macbooks scan failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  if (text === "🔊 Բարձրախոսներ") {
+    await bot.sendMessage(
+      userId,
+      "🔊 Սկանավորում եմ բարձրախոսները, խնդրում եմ սպասել...",
+    );
+    try {
+      await runSpeakersScraping();
+      const { speakers } = await runSendJob(false, false);
+
+      if (speakers.length === 0) {
+        await bot.sendMessage(
+          userId,
+          "✅ Բարձրախոսների գներում անհամապատասխանություններ չկան",
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `🚨 ${speakers.length} անհամապատասխանություն հայտնաբերվել է`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(speakers);
+    } catch (err) {
+      console.error("[bot] ❌ Speakers scan failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  if (text === "📺 Հեռուստացույցներ") {
+    await bot.sendMessage(
+      userId,
+      "📺 Սկանավորում եմ հեռուստացույցները, խնդրում եմ սպասել...",
+    );
+    try {
+      await runTvsScraping();
+      const { tvs } = await runSendJob(false, false);
+
+      if (tvs.length === 0) {
+        await bot.sendMessage(
+          userId,
+          "✅ Հեռուստացույցների գներում անհամապատասխանություններ չկան",
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `🚨 ${tvs.length} անհամապատասխանություն հայտնաբերվել է`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(tvs);
+    } catch (err) {
+      console.error("[bot] ❌ TVs scan failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  if (text === "🌀 Dyson") {
+    await bot.sendMessage(
+      userId,
+      "🌀 Սկանավորում եմ Dyson-ը, խնդրում եմ սպասել...",
+    );
+    try {
+      await runDysonScraping();
+      const { dyson } = await runSendJob(false, false);
+
+      if (dyson.length === 0) {
+        await bot.sendMessage(
+          userId,
+          "✅ Dyson-ի գներում անհամապատասխանություններ չկան",
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `🚨 ${dyson.length} անհամապատասխանություն հայտնաբերվել է`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(dyson);
+    } catch (err) {
+      console.error("[bot] ❌ Dyson scan failed:", err.message);
       await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
     }
     return;

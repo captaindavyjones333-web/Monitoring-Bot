@@ -45,6 +45,7 @@ const COLORS = [
   "cream",
   "violet",
   "bronze",
+  "squad",
 ];
 
 const MULTIWORD_COLORS = [
@@ -88,11 +89,20 @@ export function normalizeName(raw) {
   name = name.replace(/\bwi[\s-]?fi\s*\+\s*cellular\b/gi, "cellular");
 
   // 2b. Normalize Plus variants: "Pro+" / "Pro Plus" / "Pro +" → "pro plus"
-  name = name.replace(/\bflip\s*(\d{1,2})\b/gi, "flip$1");
   name = name.replace(/\bfold\s*(\d{1,2})\b/gi, "fold$1");
   name = name.replace(/\bwatch\s*(\d{1,2})\b/gi, "watch$1");
   name = name.replace(/\bse\s*(\d{1,2})\b/gi, "se$1");
   name = name.replace(/\bbuds\s*(\d{1,2})\b/gi, "buds$1");
+
+  name = name.replace(/\bcharge\s*(\d{1,2})\b/gi, "charge$1");
+  name = name.replace(/\bclip\s*(\d{1,2})\b/gi, "clip$1");
+  name = name.replace(/\bflip\s*(\d{1,2})\b/gi, "flip$1"); // JBL Flip AND Samsung Z Flip share this rule, both benefit
+  name = name.replace(/\bgo\s*(\d{1,2})\b/gi, "go$1");
+  name = name.replace(/\bxtreme\s*(\d{1,2})\b/gi, "xtreme$1");
+  name = name.replace(/\bpulse\s*(\d{1,2})\b/gi, "pulse$1");
+  name = name.replace(/\bpartybox\s*(\d{1,3})\b/gi, "partybox$1");
+  name = name.replace(/\bauthentics\s*(\d{1,3})\b/gi, "authentics$1");
+  name = name.replace(/\bonyx\s*studio\s*(\d{1,2})\b/gi, "onyx studio $1");
   name = name.replace(/(\d+)(?:st|nd|rd|th)\s+generation\b/gi, "$1");
   // Strip manufacture year mentions (e.g. "SE 2024", "SE2 2024") — the
   // generation number already conveys this, and different stores are
@@ -213,6 +223,26 @@ export function normalizeName(raw) {
   name = name.replace(/\busb\s*type[\s-]?c\b/gi, "");
   name = name.replace(/\btype[\s-]?c\b/gi, "");
   name = name.replace(/\s+/g, " ").trim();
+  // Strip generic "speaker" wording (English + Armenian) and marketing/
+  // connectivity descriptors that vary inconsistently across sites.
+  name = name.replace(/\bspeakers?\b/gi, "");
+  name = name.replace(/բարձրախոս/gi, "");
+  name = name.replace(/ակուստիկ\s+համակարգ/gi, "");
+  name = name.replace(/\bportable\b/gi, "");
+  name = name.replace(/\bwireless\b/gi, "");
+  name = name.replace(/\bbluetooth\b/gi, "");
+  name = name.replace(/\bbt\b/gi, "");
+  name = name.replace(/\bwaterproof\b/gi, "");
+  name = name.replace(/\bsplash\s*proof\b/gi, "");
+  name = name.replace(/\bsplas\s*proof\b/gi, ""); // allsell's typo variant
+  name = name.replace(/\bwith\s+battery\b/gi, "");
+  name = name.replace(/\s+/g, " ").trim();
+
+  name = name.replace(/\b[a-z]+\d{1,2}-[a-z]{2,4}\b/gi, (match) => {
+    // Only strip if it looks like "word+digit-CODE" (JBL SKU pattern),
+    // not a real distinguishing token.
+    return match.replace(/-[a-z]{2,4}$/i, "");
+  });
   // Collapse every phrasing of Active Noise Cancellation into one
   // canonical token, so "with Active Noise Cancellation", "(Active NC)",
   // and bare "ANC" all produce the same match key.
