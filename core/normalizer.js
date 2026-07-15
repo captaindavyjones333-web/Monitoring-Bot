@@ -48,6 +48,16 @@ const COLORS = [
   "squad",
 ];
 
+const ARMENIAN_COLORS = {
+  սև: "black",
+  վարդագույն: "pink",
+  կարմիր: "red",
+  սպիտակ: "white",
+  կապույտ: "blue",
+  մանուշակագույն: "purple",
+  կանաչ: "green",
+};
+
 const MULTIWORD_COLORS = [
   "space gray",
   "space grey",
@@ -66,6 +76,8 @@ const MULTIWORD_COLORS = [
   "starlight silver",
   "deep blue",
   "cosmic orange",
+  "moonstone gray",
+  "moonstone grey",
 ];
 
 const CONNECTIVITY = ["4g", "lte", "dual sim", "dual-sim"];
@@ -78,8 +90,61 @@ function wordBoundaryRegex(phrase, flags = "gi") {
   return new RegExp(`(?<![\\w])${escapeRegex(phrase)}(?![\\w])`, flags);
 }
 
+function extractConnectivity(name) {
+  const cellularIndicators =
+    /\b(5g|4g|lte|gsm|hspa|umts|cdma|nano-?sim|dual-?sim|cellular)\b/i;
+  const wifiIndicator = /\bwi[\s-]?fi\b/i;
+  if (cellularIndicators.test(name)) return "cellular";
+  if (wifiIndicator.test(name)) return "wifi";
+  return null;
+}
+
+function stripConnectivityWords(name) {
+  return name
+    .replace(/\bwi[\s-]?fi\b/gi, "")
+    .replace(/\+?\s*\bcellular\b/gi, "")
+    .replace(/\b(5g|4g|lte|gsm|hspa|umts|cdma)\b/gi, "")
+    .replace(/\bnano-?sim\b/gi, "")
+    .replace(/\bdual-?sim\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function decodeSpeakerSkus(name) {
+  name = name.replace(
+    /\bhkos(\d{1,2})[a-z]*\b/gi,
+    "harman kardon onyx studio $1",
+  );
+  name = name.replace(
+    /\bhkluna(\d)?[a-z]*\b/gi,
+    (m, n) => `harman kardon luna${n ? " " + n : ""}`,
+  );
+  name = name.replace(
+    /\bhksoundstk(\d)[a-z]*\b/gi,
+    "harman kardon soundsticks $1",
+  );
+  name = name.replace(/\bhkgoplaymini[a-z]*\b/gi, "harman kardon go play mini");
+  name = name.replace(/\bgo\s*play\s*(\d{1,2})[a-z]{2,6}\b/gi, "goplay$1");
+  name = name.replace(/\bpartybox\s*(\d{2,4})[a-z]{2,6}\b/gi, "partybox$1");
+  name = name.replace(
+    /\bpartybox\s*stage\s*(\d{2,4})[a-z]{2,4}\b/gi,
+    "partybox stage$1",
+  );
+  name = name.replace(
+    /\bpartybox\s*club\s*(\d{2,4})\s*[a-z]{2,4}\b/gi,
+    "partybox club$1",
+  );
+  name = name.replace(/\bpb(\d{2,4})[a-z]{2,6}\b/gi, "partybox$1");
+  name = name.replace(/\bbar(\d{3,4})[a-z]{2,6}\b/gi, "bar$1");
+  return name;
+}
+
 export function normalizeName(raw) {
   let name = raw.toLowerCase().trim();
+
+  name = decodeSpeakerSkus(name);
+
+  const connectivity = extractConnectivity(name);
 
   // 1. Normalize Russian GB: "256 ГБ" -> "256gb"
   name = name.replace(/(\d+)\s*гб/gi, "$1gb");
@@ -104,9 +169,28 @@ export function normalizeName(raw) {
   name = name.replace(/\bauthentics\s*(\d{1,3})\b/gi, "authentics$1");
   name = name.replace(/\bonyx\s*studio\s*(\d{1,2})\b/gi, "onyx studio $1");
   name = name.replace(/(\d+)(?:st|nd|rd|th)\s+generation\b/gi, "$1");
+  name = name.replace(/\bboombox\s*(\d{1,2})\b/gi, "boombox$1");
+  name = name.replace(/\btuner\s*(\d{1,2})\b/gi, "tuner$1");
+  name = name.replace(/\bgrip\s*(\d{0,2})\b/gi, "grip");
+  name = name.replace(/\bsoundsticks\s*(\d{1,2})\b/gi, "soundsticks$1");
+  name = name.replace(/\bluna\s*(\d{0,2})\b/gi, (m, n) =>
+    n ? `luna${n}` : "luna",
+  );
+  name = name.replace(/\bcitation\s*(\d{1,4})\b/gi, "citation$1");
+  name = name.replace(/\bgo\s*\+?\s*play\s*(\d{0,2})\b/gi, (m, n) =>
+    n ? `goplay${n}` : "goplay",
+  );
+  name = name.replace(/\baura\s*studio\s*(\d{1,2})\b/gi, "aurastudio$1");
   // Strip manufacture year mentions (e.g. "SE 2024", "SE2 2024") — the
   // generation number already conveys this, and different stores are
   // inconsistent about whether they include the year at all.
+  name = name.replace(/\bipad\s+11\s+air\b/gi, "ipad air 11");
+  name = name.replace(/\bipad\s+13\s+air\b/gi, "ipad air 13");
+  name = name.replace(/\bipad\s*mini\s*\(?2024\)?/gi, "ipad mini 7");
+  name = name.replace(/\bipad\s*mini\s*\(?2021\)?/gi, "ipad mini 6");
+  if (name.includes("ipad") || name.includes("macbook")) {
+    name = name.replace(/\b[am]\d{1,2}\s*(chip)?\b/gi, "");
+  }
   name = name.replace(/\b(19|20)\d{2}\b/g, "");
   name = name.replace(/\s+/g, " ").trim();
 
@@ -182,12 +266,14 @@ export function normalizeName(raw) {
 
   // 10. Clean punctuation and whitespace
   name = name
-    .replace(/[,\-_\/\\&]+/g, " ")
+    .replace(/[,\-_\/\\&+]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  name = name.replace(/\b(lte|5g|nanosim|dualsim|cellular)\b/g, "cellular");
-
+  name = name.replace(
+    /\b(lte|4g|5g|gsm|hspa|umts|cdma|nanosim|dualsim|cellular)\b/gi,
+    "cellular",
+  );
   // A cellular tablet always has wifi too — drop the redundant "wifi"
   // token so it doesn't fragment the match key.
   if (/\bcellular\b/.test(name)) {
@@ -196,6 +282,7 @@ export function normalizeName(raw) {
       .replace(/\s+/g, " ")
       .trim();
   }
+  name = name.replace(/\b(cellular\s+)+cellular\b/gi, "cellular");
 
   // Strip vendor SKU/model codes that only some stores include
   // (Samsung "X133", "X230"...; Apple "MXNA3", "MD3Y4"...). Guarded by
@@ -211,6 +298,10 @@ export function normalizeName(raw) {
   name = name.replace(/\bgps\b/gi, "");
   name = name.replace(/\b(aluminium|titanium|stainless steel)\s+case\b/gi, "");
   name = name.replace(/\bwith\s+.*?\s+sport\s+(band|loop)\b/gi, "");
+  name = name.replace(/\bwith\s+(?:[a-z]+\s+)?(ocean|trail|alpine|milanese)\s+(band|loop)\b/gi, "");
+  name = name.replace(/\b(ocean|trail|alpine)\s+(band|loop)\b/gi, "");
+  name = name.replace(/\bwatch\s+(\d{1,2}mm)\s+series\s*(\d{1,2})\b/gi, "watch series$2 $1");
+  name = name.replace(/\boriginal\s+/gi, "");
   name = name.replace(/\bs\/m\b/gi, "");
   name = name.replace(/\bm\/l\b/gi, "");
   name = name.replace(/\bheadphones?\b/gi, "");
@@ -223,6 +314,7 @@ export function normalizeName(raw) {
   name = name.replace(/\busb\s*type[\s-]?c\b/gi, "");
   name = name.replace(/\btype[\s-]?c\b/gi, "");
   name = name.replace(/\s+/g, " ").trim();
+
   // Strip generic "speaker" wording (English + Armenian) and marketing/
   // connectivity descriptors that vary inconsistently across sites.
   name = name.replace(/\bspeakers?\b/gi, "");
@@ -237,6 +329,16 @@ export function normalizeName(raw) {
   name = name.replace(/\bsplas\s*proof\b/gi, ""); // allsell's typo variant
   name = name.replace(/\bwith\s+battery\b/gi, "");
   name = name.replace(/\s+/g, " ").trim();
+  name = name.replace(/\bsplashproof\b/gi, "");
+  name = name.replace(/\bwith\s+(dual\s+)?mic(rophone)?\b/gi, "");
+  name = name.replace(/\bwifi\s*&\s*bluetooth\b/gi, "");
+  name = name.replace(/\bspeaker\s*system\b/gi, "");
+  name = name.replace(/\blight\s*stick\b/gi, "");
+  name = name.replace(/\bmultibeam\b/gi, "");
+  name = name.replace(/\bdolby\s*atmos\b/gi, "");
+  name = name.replace(/\bsurround\b/gi, "");
+  name = name.replace(/\bcompact\s*tv\s*speaker\b/gi, "");
+  name = name.replace(/\b\d\.\d\b/g, ""); // strip "5.1" soundbar channel counts
 
   name = name.replace(/\b[a-z]+\d{1,2}-[a-z]{2,4}\b/gi, (match) => {
     // Only strip if it looks like "word+digit-CODE" (JBL SKU pattern),
@@ -255,8 +357,11 @@ export function normalizeName(raw) {
   name = name.replace(/\s+/g, " ").trim();
   // 11. Reorder tokens: storage before sim type
   //     "iphone 17 pro max esim 256gb" -> "iphone 17 pro max 256gb esim"
-  name = reorderTokens(name);
 
+  name = stripConnectivityWords(name);
+  if (connectivity) name = `${name} ${connectivity}`;
+
+  name = reorderTokens(name);
   return name;
 }
 

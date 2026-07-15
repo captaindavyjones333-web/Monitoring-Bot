@@ -4,10 +4,16 @@ import {
   getModelKey,
   getStorageLabel,
 } from "./normalizer.js";
-import { detectCategory, MACBOOK_REGEX, TV_REGEX } from "./categoryDetector.js";
+import {
+  detectCategory,
+  MACBOOK_REGEX,
+  TV_REGEX,
+  GAMING_REGEX,
+} from "./categoryDetector.js";
 import { extractModelCode } from "./modelCode.js";
 import { extractTvModelCode } from "./tvModelCode.js";
 import { extractDysonKey } from "./dysonModelCode.js";
+import { normalizeGamingName } from "./gamingNormalizer.js";
 
 const THRESHOLD_FLAT = 3000;
 const THRESHOLD_PERCENT = 0.1;
@@ -24,17 +30,64 @@ const SOURCE_LABELS = {
   zigzag: "Zigzag",
 };
 
-const SOURCE_ORDER = [
-  "redstore",
-  "yerevanmobile",
-  "mobilecentre",
-  "allsell",
-  "3dplanet",
-  "icentre",
-  "ispace",
-  "eldorado",
-  "zigzag"
-];
+const SOURCE_ORDER_BY_CATEGORY = {
+  phones: ["redstore", "yerevanmobile", "mobilecentre", "allsell", "3dplanet"],
+  tablets: ["redstore", "yerevanmobile", "mobilecentre", "allsell", "3dplanet"],
+  watches: ["redstore", "yerevanmobile", "mobilecentre", "allsell", "3dplanet"],
+  headphones: [
+    "redstore",
+    "yerevanmobile",
+    "mobilecentre",
+    "allsell",
+    "3dplanet",
+  ],
+  speakers: [
+    "redstore",
+    "yerevanmobile",
+    "mobilecentre",
+    "allsell",
+    "3dplanet",
+    "eldorado",
+  ],
+  macbooks: [
+    "redstore",
+    "yerevanmobile",
+    "mobilecentre",
+    "allsell",
+    "icentre",
+    "ispace",
+  ],
+  tvs: ["redstore", "yerevanmobile", "mobilecentre", "allsell"],
+  dyson: [
+    "redstore",
+    "yerevanmobile",
+    "mobilecentre",
+    "allsell",
+    "3dplanet",
+    "eldorado",
+    "zigzag",
+  ],
+  gaming: [
+    "redstore",
+    "yerevanmobile",
+    "mobilecentre",
+    "allsell",
+    "3dplanet",
+    "eldorado",
+  ],
+};
+
+/**
+ * True if at least one non-redstore source has a real entry in this
+ * group's sources. Used as a final gate before treating any comparison
+ * as alert-worthy — a group where every competitor is "Առկա չէ" must
+ * never generate an alert, regardless of how hasAlert was computed.
+ */
+function hasAnyCompetitorEntry(sources) {
+  return Object.keys(sources).some(
+    (source) => source !== "redstore" && sources[source],
+  );
+}
 
 function getFlag(rsPrice, competitorPrice) {
   if (!rsPrice || !competitorPrice) return "";
@@ -56,6 +109,7 @@ function formatPricePair(cash, installment, rsCash, rsInstallment, isRedstore) {
   const rsEffectiveInstallment = rsInstallment ?? rsCash;
   const cashMatch = cash === rsCash;
   const installmentMatch = effectiveInstallment === rsEffectiveInstallment;
+
   if (cashMatch && installmentMatch) return "Արժեքները նույնն են";
 
   const cashFlag = cash ? getFlag(rsCash, cash) : "";
@@ -63,9 +117,15 @@ function formatPricePair(cash, installment, rsCash, rsInstallment, isRedstore) {
     ? getFlag(rsEffectiveInstallment, effectiveInstallment)
     : "";
 
-  const cashStr = cash ? `${cashFlag}${fmt(cash)}` : "—";
+  const cashStr = cash
+    ? cashMatch
+      ? "Նույնն է"
+      : `${cashFlag}${fmt(cash)}`
+    : "—";
   const instStr = effectiveInstallment
-    ? `${instFlag}${fmt(effectiveInstallment)}`
+    ? installmentMatch
+      ? "Նույնն է"
+      : `${instFlag}${fmt(effectiveInstallment)}`
     : null;
 
   return instStr ? `${cashStr} - ${instStr}` : cashStr;
@@ -80,8 +140,9 @@ function parseStorageValue(label) {
   return m[2].toLowerCase() === "tb" ? num * 1024 : num;
 }
 
-export function buildComparisons(groups) {
+export function buildComparisons(groups, category) {
   const buckets = new Map();
+  const sourceOrder = SOURCE_ORDER_BY_CATEGORY[category];
 
   for (const [key, group] of groups) {
     const rs = group.sources["redstore"];
@@ -103,6 +164,7 @@ export function buildComparisons(groups) {
     );
 
     let hasAlert = false;
+    let anyCompetitorAcrossAllTiers = false; // NEW
     const lines = [];
 
     const firstRs = tiers[0].group.sources["redstore"];
@@ -122,12 +184,20 @@ export function buildComparisons(groups) {
       const rsCash = rs.cash_price;
       const rsInstallment = rs.installment_price;
 
+      const hasAnyCompetitor = sourceOrder.some(
+        (source) => source !== "redstore" && group.sources[source],
+      );
+
+      if (!hasAnyCompetitor) continue; // skip this tier's lines entirely
+
+      anyCompetitorAcrossAllTiers = true; // NEW — mark that at least one tier had someone
+
       if (storageLabel) lines.push(`\n_${storageLabel}_`);
 
-      for (const source of SOURCE_ORDER) {
+      for (const source of sourceOrder) {
         const entry = group.sources[source];
         const label = SOURCE_LABELS[source];
-        if (!label) continue; // source not applicable/known, skip silently
+        if (!label) continue;
 
         if (!entry) {
           lines.push(`${label} - Առկա չէ`);
@@ -160,7 +230,12 @@ export function buildComparisons(groups) {
       }
     }
 
-    results.push({ key: modelKey, hasAlert, message: lines.join("\n") });
+    const finalHasAlert = hasAlert && anyCompetitorAcrossAllTiers; // CHANGED
+    results.push({
+      key: modelKey,
+      hasAlert: finalHasAlert,
+      message: lines.join("\n"),
+    });
   }
 
   return results;
@@ -293,7 +368,7 @@ function getMacbookSeriesKey(name, code) {
 }
 
 export function buildMacbookComparisons(groups) {
-  // Step 1: Build per-code comparisons with storage info
+  const sourceOrder = SOURCE_ORDER_BY_CATEGORY.macbooks;
   const perCodeResults = [];
 
   for (const [key, group] of groups) {
@@ -314,7 +389,7 @@ export function buildMacbookComparisons(groups) {
     const subHeader = [storagePart, codePart].filter(Boolean).join(" ");
     if (subHeader) lines.push(`\n_${subHeader}_`);
 
-    for (const source of SOURCE_ORDER) {
+    for (const source of sourceOrder) {
       const entry = group.sources[source];
       const label = SOURCE_LABELS[source];
       if (!label) continue;
@@ -349,11 +424,16 @@ export function buildMacbookComparisons(groups) {
       }
     }
 
+    const hasAnyCompetitor = sourceOrder.some(
+      (source) => source !== "redstore" && group.sources[source],
+    );
+
     perCodeResults.push({
       key,
       seriesKey,
       storage,
       hasAlert,
+      hasAnyCompetitor,
       rsCash,
       lines,
     });
@@ -370,20 +450,22 @@ export function buildMacbookComparisons(groups) {
 
   const results = [];
 
-  for (const [seriesKey, items] of seriesMap) {
-    // Sort items within a series by redstore cash price (ascending)
+for (const [seriesKey, items] of seriesMap) {
     items.sort((a, b) => (a.rsCash ?? 0) - (b.rsCash ?? 0));
 
     const hasAlert = items.some((item) => item.hasAlert);
+    const anyCompetitorAcrossItems = items.some((item) => item.hasAnyCompetitor);
     const allLines = [`*${seriesKey}*`];
 
     for (const item of items) {
+      if (!item.hasAnyCompetitor) continue;
       allLines.push(...item.lines);
     }
 
+    const finalHasAlert = hasAlert && anyCompetitorAcrossItems;
     results.push({
       key: seriesKey,
-      hasAlert,
+      hasAlert: finalHasAlert,
       message: allLines.join("\n"),
     });
   }
@@ -442,6 +524,7 @@ export function groupTvsByCode(products) {
 }
 
 export function buildTvComparisons(groups) {
+  const sourceOrder = SOURCE_ORDER_BY_CATEGORY.tvs;
   const results = [];
 
   for (const [key, group] of groups) {
@@ -460,7 +543,7 @@ export function buildTvComparisons(groups) {
       .trim();
     lines.push(`*${displayName} [${group.code}]*`);
 
-    for (const source of SOURCE_ORDER) {
+    for (const source of sourceOrder) {
       const entry = group.sources[source];
       const label = SOURCE_LABELS[source];
       if (!label) continue;
@@ -495,7 +578,12 @@ export function buildTvComparisons(groups) {
       }
     }
 
-    results.push({ key, hasAlert, message: lines.join("\n") });
+    const finalHasAlert = hasAlert && hasAnyCompetitorEntry(group.sources);
+    results.push({
+      key,
+      hasAlert: finalHasAlert,
+      message: lines.join("\n"),
+    });
   }
 
   return results;
@@ -531,6 +619,7 @@ export function groupDysonByKey(products) {
 }
 
 export function buildDysonComparisons(groups) {
+  const sourceOrder = SOURCE_ORDER_BY_CATEGORY.dyson;
   const results = [];
 
   for (const [key, group] of groups) {
@@ -546,7 +635,7 @@ export function buildDysonComparisons(groups) {
     const displayName = rs.name.replace(/\s+/g, " ").trim();
     lines.push(`*${displayName}*`);
 
-    for (const source of SOURCE_ORDER) {
+    for (const source of sourceOrder) {
       const entry = group.sources[source];
       const label = SOURCE_LABELS[source];
       if (!label) continue;
@@ -557,7 +646,13 @@ export function buildDysonComparisons(groups) {
       }
 
       const isRS = source === "redstore";
-      const priceStr = formatPricePair(entry.cash_price, entry.installment_price, rsCash, rsInstallment, isRS);
+      const priceStr = formatPricePair(
+        entry.cash_price,
+        entry.installment_price,
+        rsCash,
+        rsInstallment,
+        isRS,
+      );
       lines.push(`${label} - ${priceStr}`);
 
       if (!isRS) {
@@ -566,13 +661,112 @@ export function buildDysonComparisons(groups) {
           if (flag === "❗" || flag === "✅") hasAlert = true;
         }
         if (entry.installment_price) {
-          const flag = getFlag(rsInstallment ?? rsCash, entry.installment_price);
+          const flag = getFlag(
+            rsInstallment ?? rsCash,
+            entry.installment_price,
+          );
           if (flag === "❗" || flag === "✅") hasAlert = true;
         }
       }
     }
 
-    results.push({ key, hasAlert, message: lines.join("\n") });
+    const finalHasAlert = hasAlert && hasAnyCompetitorEntry(group.sources);
+    results.push({
+      key,
+      hasAlert: finalHasAlert,
+      message: lines.join("\n"),
+    });
+  }
+
+  return results;
+}
+
+export function groupGamingByName(products) {
+  const groups = new Map();
+
+  for (const product of products) {
+    const key = normalizeGamingName(product.name);
+    if (!key) continue;
+
+    if (!groups.has(key)) {
+      groups.set(key, { normalized: key, sources: {} });
+    }
+
+    const group = groups.get(key);
+    const existing = group.sources[product.source];
+    if (existing) {
+      const newCash = product.cash_price ?? Infinity;
+      const oldCash = existing.cash_price ?? Infinity;
+      if (newCash >= oldCash) continue;
+    }
+
+    group.sources[product.source] = {
+      name: product.name,
+      cash_price: product.cash_price ?? null,
+      installment_price: product.installment_price ?? null,
+    };
+  }
+
+  return groups;
+}
+
+export function buildGamingComparisons(groups) {
+  const sourceOrder = SOURCE_ORDER_BY_CATEGORY.gaming;
+  const results = [];
+
+  for (const [key, group] of groups) {
+    const rs = group.sources["redstore"];
+    if (!rs) continue;
+
+    const rsCash = rs.cash_price;
+    const rsInstallment = rs.installment_price;
+
+    let hasAlert = false;
+    const lines = [];
+
+    lines.push(`*${rs.name.trim()}*`);
+
+    for (const source of sourceOrder) {
+      const entry = group.sources[source];
+      const label = SOURCE_LABELS[source];
+      if (!label) continue;
+
+      if (!entry) {
+        lines.push(`${label} - Առկա չէ`);
+        continue;
+      }
+
+      const isRS = source === "redstore";
+      const priceStr = formatPricePair(
+        entry.cash_price,
+        entry.installment_price,
+        rsCash,
+        rsInstallment,
+        isRS,
+      );
+      lines.push(`${label} - ${priceStr}`);
+
+      if (!isRS) {
+        if (entry.cash_price) {
+          const flag = getFlag(rsCash, entry.cash_price);
+          if (flag === "❗" || flag === "✅") hasAlert = true;
+        }
+        if (entry.installment_price) {
+          const flag = getFlag(
+            rsInstallment ?? rsCash,
+            entry.installment_price,
+          );
+          if (flag === "❗" || flag === "✅") hasAlert = true;
+        }
+      }
+    }
+
+    const finalHasAlert = hasAlert && hasAnyCompetitorEntry(group.sources);
+    results.push({
+      key,
+      hasAlert: finalHasAlert,
+      message: lines.join("\n"),
+    });
   }
 
   return results;
@@ -629,6 +823,7 @@ export function splitAlertsByCategory(comparisons) {
     speakers: [],
     tvs: [],
     dyson: [],
+    gaming: [],
   };
 
   for (const item of alerts) {
@@ -645,6 +840,7 @@ export function splitAlertsByCategory(comparisons) {
     speakers: buckets.speakers.map((msg, i) => `${i + 1}. ${msg}`),
     tvs: buckets.tvs.map((msg, i) => `${i + 1}. ${msg}`),
     dyson: buckets.dyson.map((msg, i) => `${i + 1}. ${msg}`),
+    gaming: buckets.gaming.map((msg, i) => `${i + 1}. ${msg}`),
   };
 }
 
@@ -655,34 +851,66 @@ export function splitAlertsByCategory(comparisons) {
  */
 export function runComparison(allProducts) {
   const macbookProducts = allProducts.filter((p) => MACBOOK_REGEX.test(p.name));
-  const tvProducts = allProducts.filter((p) => TV_REGEX.test(p.name) && !MACBOOK_REGEX.test(p.name));
-  const dysonProducts = allProducts.filter(
-    (p) => /\bdyson\b/i.test(p.name) && !MACBOOK_REGEX.test(p.name) && !TV_REGEX.test(p.name),
+  const tvProducts = allProducts.filter(
+    (p) => TV_REGEX.test(p.name) && !MACBOOK_REGEX.test(p.name),
   );
-  const otherProducts = allProducts.filter(
+  const dysonProducts = allProducts.filter(
     (p) =>
+      /\bdyson\b/i.test(p.name) &&
+      !MACBOOK_REGEX.test(p.name) &&
+      !TV_REGEX.test(p.name),
+  );
+  const gamingProducts = allProducts.filter(
+    (p) =>
+      GAMING_REGEX.test(p.name) &&
       !MACBOOK_REGEX.test(p.name) &&
       !TV_REGEX.test(p.name) &&
       !/\bdyson\b/i.test(p.name),
   );
 
-  const otherGroups = groupByNormalizedName(otherProducts);
-  const otherComparisons = buildComparisons(otherGroups);
+  const remaining = allProducts.filter(
+    (p) =>
+      !MACBOOK_REGEX.test(p.name) &&
+      !TV_REGEX.test(p.name) &&
+      !/\bdyson\b/i.test(p.name) &&
+      !GAMING_REGEX.test(p.name),
+  );
 
-  const macbookGroups = groupMacbooksByCode(macbookProducts);
-  const macbookComparisons = buildMacbookComparisons(macbookGroups);
+  const byCategory = {
+    phones: [],
+    tablets: [],
+    watches: [],
+    headphones: [],
+    speakers: [],
+  };
+  for (const p of remaining) {
+    const cat = detectCategory(p.name);
+    (byCategory[cat] || byCategory.phones).push(p);
+  }
 
-  const tvGroups = groupTvsByCode(tvProducts);
-  const tvComparisons = buildTvComparisons(tvGroups);
+  let otherComparisons = [];
+  for (const [cat, products] of Object.entries(byCategory)) {
+    const groups = groupByNormalizedName(products);
+    otherComparisons = otherComparisons.concat(buildComparisons(groups, cat));
+  }
 
-  const dysonGroups = groupDysonByKey(dysonProducts);
-  const dysonComparisons = buildDysonComparisons(dysonGroups);
+  const macbookComparisons = buildMacbookComparisons(
+    groupMacbooksByCode(macbookProducts),
+  );
+  const tvComparisons = buildTvComparisons(groupTvsByCode(tvProducts));
+  const dysonComparisons = buildDysonComparisons(
+    groupDysonByKey(dysonProducts),
+  );
+  const gamingComparisons = buildGamingComparisons(
+    groupGamingByName(gamingProducts),
+  );
 
   const allComparisons = [
     ...otherComparisons,
     ...macbookComparisons,
     ...tvComparisons,
     ...dysonComparisons,
+    ...gamingComparisons,
   ];
   return splitAlertsByCategory(allComparisons);
 }

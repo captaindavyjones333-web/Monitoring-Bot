@@ -45,6 +45,38 @@ import { scrapeAllsellDyson } from "../scrapers/allsell/dyson.js";
 import { scrape3DPlanetDyson } from "../scrapers/d3planet/dyson.js";
 import { scrapeEldoradoDyson } from "../scrapers/eldorado/dyson.js";
 import { scrapeZigzagDyson } from "../scrapers/zigzag/dyson.js";
+import { scrapeRedstoreGaming } from "../scrapers/redstore/gaming.js";
+import { scrapeYerevanMobileGaming } from "../scrapers/yerevanmobile/gaming.js";
+import { scrapeMobileCentreGaming } from "../scrapers/mobilecentre/gaming.js";
+import { scrapeAllsellGaming } from "../scrapers/allsell/gaming.js";
+import { scrape3DPlanetGaming } from "../scrapers/d3planet/gaming.js";
+import { scrapeEldoradoGaming } from "../scrapers/eldorado/gaming.js";
+
+export async function runGamingScraping() {
+  console.log("[scrape] 🔄 Starting gaming-only scrape...");
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "gaming", scrapeRedstoreGaming),
+    scrapeCategoryIntoSource(
+      "yerevanmobile",
+      "gaming",
+      scrapeYerevanMobileGaming,
+    ),
+    scrapeCategoryIntoSource("allsell", "gaming", scrapeAllsellGaming),
+  ]);
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource(
+      "mobilecentre",
+      "gaming",
+      scrapeMobileCentreGaming,
+    ),
+    scrapeCategoryIntoSource("3dplanet", "gaming", scrape3DPlanetGaming),
+    scrapeCategoryIntoSource("eldorado", "gaming", scrapeEldoradoGaming),
+  ]);
+
+  console.log("[scrape] ✅ Gaming-only scrape complete");
+}
 
 async function scrapeCategoryIntoSource(source, category, fn) {
   try {

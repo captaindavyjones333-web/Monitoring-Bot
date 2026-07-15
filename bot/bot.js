@@ -10,12 +10,18 @@ import {
   runSpeakersScraping,
   runTvsScraping,
   runDysonScraping,
+  runGamingScraping,
 } from "../jobs/scrapeJob.js";
 import { runSendJob } from "../jobs/sendJob.js";
 import { loadAllCaches } from "../core/cache_manager.js";
 import { groupByNormalizedName } from "../core/normalizer.js";
-// import { buildComparisons, getAlertMessages } from "../core/comparator.js";
+import {
+  CATEGORY_CONFIG,
+  buildCategoryMenu,
+  filterMessagesByBrand,
+} from "../core/categoryMenu.js";
 import dotenv from "dotenv";
+
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -64,16 +70,20 @@ function isAdmin(userId) {
 
 // ─── Keyboards ────────────────────────────────────────────────────────────────
 
+const CATEGORY_BUTTONS = [
+  [{ text: "📱 Հեռախոսներ" }, { text: "📟 Պլանշետներ" }],
+  [{ text: "⌚ Ժամացույցներ" }, { text: "🎧 Ականջակալներ" }],
+  [{ text: "💻 Macbook" }, { text: "🔊 Խոսափողեր" }],
+  [{ text: "📺 Հեռուստացույցներ" }, { text: "💇 Dyson" }],
+  [{ text: "🎮 Gaming" }],
+];
+
 const MAIN_KEYBOARD = {
   reply_markup: {
     keyboard: [
-      [{ text: "💰 Արագ ստուգում" }, { text: "🔄 Լրիվ սկանավորում" }],
-      [{ text: "⌚ Ժամացույցներ" }, { text: "🎧 Ականջակալներ" }],
+      [{ text: "🔄 Լրիվ սկանավորում" }],
+      ...CATEGORY_BUTTONS,
       [{ text: "👥 Օգտատերեր" }],
-      [{ text: "💻 Macbook" }],
-      [{ text: "🔊 Բարձրախոսներ" }],
-      [{ text: "📺 Հեռուստացույցներ" }],
-      [{ text: "🌀 Dyson" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -82,31 +92,27 @@ const MAIN_KEYBOARD = {
 
 const USER_KEYBOARD = {
   reply_markup: {
-    keyboard: [
-      [{ text: "💰 Արագ ստուգում" }, { text: "🔄 Լրիվ սկանավորում" }],
-      [{ text: "⌚ Ժամացույցներ" }, { text: "🎧 Ականջակալներ" }],
-      [{ text: "💻 Macbook" }],
-      [{ text: "🔊 Բարձրախոսներ" }],
-      [{ text: "📺 Հեռուստացույցներ" }],
-      [{ text: "🌀 Dyson" }],
-    ],
+    keyboard: [[{ text: "🔄 Լրիվ սկանավորում" }], ...CATEGORY_BUTTONS],
     resize_keyboard: true,
     persistent: true,
   },
 };
 
+const CATEGORY_LABEL_TO_KEY = Object.fromEntries(
+  Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => [cfg.label, key]),
+);
+
 // ─── Send alerts ──────────────────────────────────────────────────────────────
 
-export async function sendAlerts(messages) {
+export async function sendAlerts(messages, targetChatId = CHAT_ID) {
   for (const msg of messages) {
     try {
-      await bot.sendMessage(CHAT_ID, msg, { parse_mode: "Markdown" });
+      await bot.sendMessage(targetChatId, msg, { parse_mode: "Markdown" });
     } catch (err) {
       console.error("[bot] ❌ Failed to send message:", err.message);
     }
   }
-  // Re-show keyboard after alerts
-  await bot.sendMessage(CHAT_ID, "—", MAIN_KEYBOARD).catch(() => {});
+  await bot.sendMessage(targetChatId, "—", MAIN_KEYBOARD).catch(() => {});
 }
 
 // ─── Cash prices quick scan ───────────────────────────────────────────────────
@@ -202,68 +208,129 @@ bot.onText(/\/start/, async (msg) => {
   );
 });
 
-// ─── Admin approve/reject ─────────────────────────────────────────────────────
+// ─── Callback queries (admin approve/reject/remove + category filters) ───────
 
 bot.on("callback_query", async (query) => {
-  const adminId = String(query.from.id);
-  if (!isAdmin(adminId)) return;
-
+  const userId = String(query.message.chat.id);
   const data = query.data;
 
-  if (data.startsWith("approve_")) {
-    const userId = data.replace("approve_", "");
-    const users = loadUsers();
-    if (users[userId]) {
-      users[userId].approved = true;
-      saveUsers(users);
+  // Admin-only actions
+  if (
+    data.startsWith("approve_") ||
+    data.startsWith("reject_") ||
+    data.startsWith("remove_")
+  ) {
+    const adminId = String(query.from.id);
+    if (!isAdmin(adminId)) return;
+
+    if (data.startsWith("approve_")) {
+      const targetId = data.replace("approve_", "");
+      const users = loadUsers();
+      if (users[targetId]) {
+        users[targetId].approved = true;
+        saveUsers(users);
+      }
+      await bot.answerCallbackQuery(query.id, { text: "✅ Հաստատված" });
+      await bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        {
+          chat_id: query.message.chat.id,
+          message_id: query.message.message_id,
+        },
+      );
+      await bot.sendMessage(
+        targetId,
+        "✅ Ձեր հայտը հաստատվել է: Կարող եք օգտվել բոտից:",
+        USER_KEYBOARD,
+      );
+      await bot.sendMessage(adminId, `✅ Օգտատեր ${targetId} հաստատված է:`);
     }
-    await bot.answerCallbackQuery(query.id, { text: "✅ Հաստատված" });
-    await bot.editMessageReplyMarkup(
-      { inline_keyboard: [] },
-      {
-        chat_id: query.message.chat.id,
-        message_id: query.message.message_id,
-      },
-    );
+
+    if (data.startsWith("reject_")) {
+      const targetId = data.replace("reject_", "");
+      const users = loadUsers();
+      if (users[targetId]) {
+        users[targetId].approved = false;
+        saveUsers(users);
+      }
+      await bot.answerCallbackQuery(query.id, { text: "❌ Մերժված" });
+      await bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        {
+          chat_id: query.message.chat.id,
+          message_id: query.message.message_id,
+        },
+      );
+      await bot.sendMessage(targetId, "❌ Ձեր հայտը մերժվել է:");
+      await bot.sendMessage(adminId, `❌ Օգտատեր ${targetId} մերժված է:`);
+    }
+
+    if (data.startsWith("remove_")) {
+      const targetId = data.replace("remove_", "");
+      const users = loadUsers();
+      if (users[targetId]) {
+        users[targetId].approved = false;
+        saveUsers(users);
+      }
+      await bot.answerCallbackQuery(query.id, { text: "🗑️ Հեռացված" });
+      await bot.sendMessage(adminId, `🗑️ Օգտատեր ${targetId} հեռացված է:`);
+      await bot.sendMessage(targetId, "❌ Ձեր հասանելիությունը հեռացվել է:");
+      // Refresh users list
+      await showUsersList(adminId);
+    }
+
+    return;
+  }
+
+  // Category filter actions (cache-only, no scraping)
+  await bot.answerCallbackQuery(query.id).catch(() => {});
+
+  if (!isApproved(userId)) {
+    await bot.sendMessage(userId, "⛔ Դուք հասանելիություն չունեք:");
+    return;
+  }
+
+  if (data === "cat|back") {
+    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+    return;
+  }
+
+  const [, categoryKey, mode, brandIndex] = data.split("|");
+  if (!CATEGORY_CONFIG[categoryKey]) return;
+
+  try {
+    const result = await runSendJob(false, false);
+    const categoryMessages = result[categoryKey] || [];
+
+    const messages =
+      mode === "brand"
+        ? filterMessagesByBrand(
+            categoryMessages,
+            categoryKey,
+            Number(brandIndex),
+          )
+        : categoryMessages;
+
+    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+
+    if (messages.length === 0) {
+      await bot.sendMessage(
+        userId,
+        "✅ Գնային անհամապատասխանություններ չկան",
+        USER_KEYBOARD,
+      );
+      return;
+    }
+
     await bot.sendMessage(
       userId,
-      "✅ Ձեր հայտը հաստատվել է: Կարող եք օգտվել բոտից:",
+      `🚨 ${messages.length} անհամապատասխանություն հայտնաբերվել է`,
       USER_KEYBOARD,
     );
-    await bot.sendMessage(adminId, `✅ Օգտատեր ${userId} հաստատված է:`);
-  }
-
-  if (data.startsWith("reject_")) {
-    const userId = data.replace("reject_", "");
-    const users = loadUsers();
-    if (users[userId]) {
-      users[userId].approved = false;
-      saveUsers(users);
-    }
-    await bot.answerCallbackQuery(query.id, { text: "❌ Մերժված" });
-    await bot.editMessageReplyMarkup(
-      { inline_keyboard: [] },
-      {
-        chat_id: query.message.chat.id,
-        message_id: query.message.message_id,
-      },
-    );
-    await bot.sendMessage(userId, "❌ Ձեր հայտը մերժվել է:");
-    await bot.sendMessage(adminId, `❌ Օգտատեր ${userId} մերժված է:`);
-  }
-
-  if (data.startsWith("remove_")) {
-    const userId = data.replace("remove_", "");
-    const users = loadUsers();
-    if (users[userId]) {
-      users[userId].approved = false;
-      saveUsers(users);
-    }
-    await bot.answerCallbackQuery(query.id, { text: "🗑️ Հեռացված" });
-    await bot.sendMessage(adminId, `🗑️ Օգտատեր ${userId} հեռացված է:`);
-    await bot.sendMessage(userId, "❌ Ձեր հասանելիությունը հեռացվել է:");
-    // Refresh users list
-    await showUsersList(adminId);
+    await sendAlerts(messages, userId);
+  } catch (err) {
+    console.error("[bot] ❌ Category check failed:", err.message);
+    await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
   }
 });
 
@@ -334,12 +401,7 @@ bot.on("message", async (msg) => {
     return;
   }
 
-  if (text === "💰 Արագ ստուգում") {
-    await bot.sendMessage(userId, "💰 Բեռնում եմ վերջին տվյալները...");
-    await sendCashData(userId);
-    return;
-  }
-
+  // ─── Full scan: re-scrapes every category, then reports a summary ───────
   if (text === "🔄 Լրիվ սկանավորում") {
     await bot.sendMessage(
       userId,
@@ -347,8 +409,19 @@ bot.on("message", async (msg) => {
     );
     try {
       await runScraping();
-      const { phones, tablets } = await runSendJob(false, false);
-      const total = phones.length + tablets.length;
+      await runWatchesScraping();
+      await runHeadphonesScraping();
+      await runMacbooksScraping();
+      await runSpeakersScraping();
+      await runTvsScraping();
+      await runDysonScraping();
+      await runGamingScraping();
+
+      const result = await runSendJob(false, false);
+      const total = Object.values(result).reduce(
+        (sum, arr) => sum + arr.length,
+        0,
+      );
 
       if (total === 0) {
         await bot.sendMessage(
@@ -365,17 +438,13 @@ bot.on("message", async (msg) => {
         USER_KEYBOARD,
       );
 
-      if (phones.length > 0) {
-        await bot.sendMessage(userId, "📱 *Հեռախոսներ*", {
+      for (const [categoryKey, cfg] of Object.entries(CATEGORY_CONFIG)) {
+        const messages = result[categoryKey] || [];
+        if (messages.length === 0) continue;
+        await bot.sendMessage(userId, `${cfg.label}`, {
           parse_mode: "Markdown",
         });
-        await sendAlerts(phones);
-      }
-      if (tablets.length > 0) {
-        await bot.sendMessage(userId, "💻 *Պլանշետներ*", {
-          parse_mode: "Markdown",
-        });
-        await sendAlerts(tablets);
+        await sendAlerts(messages);
       }
     } catch (err) {
       console.error("[bot] ❌ Full scan failed:", err.message);
@@ -384,188 +453,14 @@ bot.on("message", async (msg) => {
     return;
   }
 
-  if (text === "⌚ Ժամացույցներ") {
+  // ─── Generic category button: cache-only, shows brand-filter menu ───────
+  if (CATEGORY_LABEL_TO_KEY[text]) {
+    const categoryKey = CATEGORY_LABEL_TO_KEY[text];
     await bot.sendMessage(
       userId,
-      "⌚ Սկանավորում եմ ժամացույցները, խնդրում եմ սպասել...",
+      `${text} — ընտրեք բրենդը կամ ստուգեք բոլորը.`,
+      buildCategoryMenu(categoryKey),
     );
-    try {
-      await runWatchesScraping();
-      const { watches } = await runSendJob(false, false);
-
-      if (watches.length === 0) {
-        await bot.sendMessage(
-          userId,
-          "✅ Ժամացույցների գներում անհամապատասխանություններ չկան",
-          USER_KEYBOARD,
-        );
-        return;
-      }
-
-      await bot.sendMessage(
-        userId,
-        `🚨 ${watches.length} անհամապատասխանություն հայտնաբերվել է`,
-        USER_KEYBOARD,
-      );
-      await sendAlerts(watches);
-    } catch (err) {
-      console.error("[bot] ❌ Watches scan failed:", err.message);
-      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
-    }
-    return;
-  }
-
-  if (text === "🎧 Ականջակալներ") {
-    await bot.sendMessage(
-      userId,
-      "🎧 Սկանավորում եմ ականջակալները, խնդրում եմ սպասել...",
-    );
-    try {
-      await runHeadphonesScraping();
-      const { headphones } = await runSendJob(false, false);
-
-      if (headphones.length === 0) {
-        await bot.sendMessage(
-          userId,
-          "✅ Ականջակալների գներում անհամապատասխանություններ չկան",
-          USER_KEYBOARD,
-        );
-        return;
-      }
-
-      await bot.sendMessage(
-        userId,
-        `🚨 ${headphones.length} անհամապատասխանություն հայտնաբերվել է`,
-        USER_KEYBOARD,
-      );
-      await sendAlerts(headphones);
-    } catch (err) {
-      console.error("[bot] ❌ Headphones scan failed:", err.message);
-      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
-    }
-    return;
-  }
-
-  if (text === "💻 Macbook") {
-    await bot.sendMessage(
-      userId,
-      "💻 Սկանավորում եմ MacBook-երը, խնդրում եմ սպասել...",
-    );
-    try {
-      await runMacbooksScraping();
-      const { macbooks } = await runSendJob(false, false);
-      if (macbooks.length === 0) {
-        await bot.sendMessage(
-          userId,
-          "✅ MacBook-երի գներում անհամապատասխանություններ չկան",
-          USER_KEYBOARD,
-        );
-        return;
-      }
-
-      await bot.sendMessage(
-        userId,
-        `🚨 ${macbooks.length} անհամապատասխանություն հայտնաբերվել է`,
-        USER_KEYBOARD,
-      );
-      await sendAlerts(macbooks);
-    } catch (err) {
-      console.error("[bot] ❌ Macbooks scan failed:", err.message);
-      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
-    }
-    return;
-  }
-
-  if (text === "🔊 Բարձրախոսներ") {
-    await bot.sendMessage(
-      userId,
-      "🔊 Սկանավորում եմ բարձրախոսները, խնդրում եմ սպասել...",
-    );
-    try {
-      await runSpeakersScraping();
-      const { speakers } = await runSendJob(false, false);
-
-      if (speakers.length === 0) {
-        await bot.sendMessage(
-          userId,
-          "✅ Բարձրախոսների գներում անհամապատասխանություններ չկան",
-          USER_KEYBOARD,
-        );
-        return;
-      }
-
-      await bot.sendMessage(
-        userId,
-        `🚨 ${speakers.length} անհամապատասխանություն հայտնաբերվել է`,
-        USER_KEYBOARD,
-      );
-      await sendAlerts(speakers);
-    } catch (err) {
-      console.error("[bot] ❌ Speakers scan failed:", err.message);
-      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
-    }
-    return;
-  }
-
-  if (text === "📺 Հեռուստացույցներ") {
-    await bot.sendMessage(
-      userId,
-      "📺 Սկանավորում եմ հեռուստացույցները, խնդրում եմ սպասել...",
-    );
-    try {
-      await runTvsScraping();
-      const { tvs } = await runSendJob(false, false);
-
-      if (tvs.length === 0) {
-        await bot.sendMessage(
-          userId,
-          "✅ Հեռուստացույցների գներում անհամապատասխանություններ չկան",
-          USER_KEYBOARD,
-        );
-        return;
-      }
-
-      await bot.sendMessage(
-        userId,
-        `🚨 ${tvs.length} անհամապատասխանություն հայտնաբերվել է`,
-        USER_KEYBOARD,
-      );
-      await sendAlerts(tvs);
-    } catch (err) {
-      console.error("[bot] ❌ TVs scan failed:", err.message);
-      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
-    }
-    return;
-  }
-
-  if (text === "🌀 Dyson") {
-    await bot.sendMessage(
-      userId,
-      "🌀 Սկանավորում եմ Dyson-ը, խնդրում եմ սպասել...",
-    );
-    try {
-      await runDysonScraping();
-      const { dyson } = await runSendJob(false, false);
-
-      if (dyson.length === 0) {
-        await bot.sendMessage(
-          userId,
-          "✅ Dyson-ի գներում անհամապատասխանություններ չկան",
-          USER_KEYBOARD,
-        );
-        return;
-      }
-
-      await bot.sendMessage(
-        userId,
-        `🚨 ${dyson.length} անհամապատասխանություն հայտնաբերվել է`,
-        USER_KEYBOARD,
-      );
-      await sendAlerts(dyson);
-    } catch (err) {
-      console.error("[bot] ❌ Dyson scan failed:", err.message);
-      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
-    }
     return;
   }
 });

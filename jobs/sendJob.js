@@ -18,6 +18,7 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       speakers: [],
       tvs: [],
       dyson: [],
+      gaming: [],
     };
   }
 
@@ -30,10 +31,10 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
     console.error(err.stack);
     throw err;
   }
-  const { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson } = runComparison(allProducts);
+  const { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming } = runComparison(allProducts);
 
   console.log(
-    `[send] 🚨 ${phones.length} phone, ${tablets.length} tablet, ${watches.length} watch, ${headphones.length} headphone, ${macbooks.length} macbook, ${speakers.length} speaker, ${tvs.length} tv, ${dyson.length} dyson`,
+    `[send] 🚨 ${phones.length} phone, ${tablets.length} tablet, ${watches.length} watch, ${headphones.length} headphone, ${macbooks.length} macbook, ${speakers.length} speaker, ${tvs.length} tv, ${dyson.length} dyson, ${gaming.length} gaming`,
   );
 
   const getKey = (msg) =>
@@ -42,7 +43,7 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       .split("\n")[0]
       .trim();
 
-  let result = { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson };
+  let result = { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming };
 
   if (onlyNew) {
     result = {
@@ -54,6 +55,7 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       speakers: speakers.filter((m) => !previousAlertKeys.has(getKey(m))),
       tvs: tvs.filter((m) => !previousAlertKeys.has(getKey(m))),
       dyson: dyson.filter((m) => !previousAlertKeys.has(getKey(m))),
+      gaming: gaming.filter((m) => !previousAlertKeys.has(getKey(m))),
     };
   }
 
@@ -67,6 +69,8 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       ...speakers,
       ...tvs,
       ...dyson,
+      ...gaming,
+
     ].map(getKey),
   );
 
