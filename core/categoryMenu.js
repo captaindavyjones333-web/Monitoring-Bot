@@ -64,6 +64,10 @@ export const CATEGORY_CONFIG = {
       { label: "Meta", match: /meta\s*quest/i },
     ],
   },
+  airconditioners: {
+    label: "❄️ Օդորակիչներ",
+    brands: [],
+  },
 };
 
 export function buildCategoryMenu(categoryKey) {

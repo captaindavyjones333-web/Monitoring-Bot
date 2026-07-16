@@ -11,7 +11,6 @@ const BRAND_IDS = {
 
 function getSimSuffix(simValue) {
   const s = simValue.trim().toLowerCase();
-
   switch (s) {
     case "2 esim":
       return " Dual eSim";
@@ -21,6 +20,7 @@ function getSimSuffix(simValue) {
       return " Dual-Sim";
     case "1 sim":
       return "";
+    case "առանց sim քարտի հնարավորության":
     case "without sim card capability":
       return " eSim";
     default:

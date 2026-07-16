@@ -7,6 +7,7 @@ export const SPEAKER_REGEX = /\bspeaker\b|\bharman\s*kardon\b|\bjbl\b|marshall\s
 export const TV_REGEX = /\btv\b|հեռուստացույց|\bled\b.*\bsmart\b|\bqled\b|\b[uq]e\d{2,3}[a-z0-9]{4,10}\b|\b\d{2}ev\d{3}[a-z0-9-]*\b/i;
 export const DYSON_REGEX = /\bdyson\b/i;
 export const GAMING_REGEX = /\bps5\b|\bplaystation\s*5\b|\bswitch\b|\bxbox\s*series\b|\bmeta\s*quest\s*\d\b/i;
+export const AC_REGEX = /\bair\s*condition|odorak|օդորակ/i;
 
 export function detectCategory(name) {
   if (WATCH_REGEX.test(name)) return "watches";
@@ -17,5 +18,6 @@ export function detectCategory(name) {
   if (TV_REGEX.test(name)) return "tvs";
   if (DYSON_REGEX.test(name)) return "dyson";
   if (GAMING_REGEX.test(name)) return "gaming";
+  if (AC_REGEX.test(name)) return "ac";
   return "phones";
 }

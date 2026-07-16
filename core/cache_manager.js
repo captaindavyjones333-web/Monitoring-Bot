@@ -19,7 +19,9 @@ const SOURCES = [
   "icentre",
   "ispace",
   "eldorado",
-  "zigzag"
+  "zigzag",
+  "vesta",
+  "vlv",
 ];
 
 // ─── Write ────────────────────────────────────────────────────────────────────

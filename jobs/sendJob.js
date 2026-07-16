@@ -19,6 +19,7 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       tvs: [],
       dyson: [],
       gaming: [],
+      airconditioners: [],
     };
   }
 
@@ -31,10 +32,10 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
     console.error(err.stack);
     throw err;
   }
-  const { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming } = runComparison(allProducts);
+  const { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming, airconditioners } = runComparison(allProducts);
 
   console.log(
-    `[send] 🚨 ${phones.length} phone, ${tablets.length} tablet, ${watches.length} watch, ${headphones.length} headphone, ${macbooks.length} macbook, ${speakers.length} speaker, ${tvs.length} tv, ${dyson.length} dyson, ${gaming.length} gaming`,
+    `[send] 🚨 ${phones.length} phone, ${tablets.length} tablet, ${watches.length} watch, ${headphones.length} headphone, ${macbooks.length} macbook, ${speakers.length} speaker, ${tvs.length} tv, ${dyson.length} dyson, ${gaming.length} gaming, ${airconditioners.length} airconditioner`,
   );
 
   const getKey = (msg) =>
@@ -43,7 +44,7 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       .split("\n")[0]
       .trim();
 
-  let result = { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming };
+  let result = { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming, airconditioners };
 
   if (onlyNew) {
     result = {
@@ -56,6 +57,7 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       tvs: tvs.filter((m) => !previousAlertKeys.has(getKey(m))),
       dyson: dyson.filter((m) => !previousAlertKeys.has(getKey(m))),
       gaming: gaming.filter((m) => !previousAlertKeys.has(getKey(m))),
+      airconditioners: airconditioners.filter((m) => !previousAlertKeys.has(getKey(m))),
     };
   }
 
@@ -70,6 +72,7 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       ...tvs,
       ...dyson,
       ...gaming,
+      ...airconditioners,
 
     ].map(getKey),
   );

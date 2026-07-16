@@ -51,6 +51,25 @@ import { scrapeMobileCentreGaming } from "../scrapers/mobilecentre/gaming.js";
 import { scrapeAllsellGaming } from "../scrapers/allsell/gaming.js";
 import { scrape3DPlanetGaming } from "../scrapers/d3planet/gaming.js";
 import { scrapeEldoradoGaming } from "../scrapers/eldorado/gaming.js";
+import { scrapeRedstoreAirConditioners } from "../scrapers/redstore/airconditioners.js";
+import { scrapeAllsellAirConditioners } from "../scrapers/allsell/airconditioners.js";
+import { scrapeEldoradoAirConditioners } from "../scrapers/eldorado/airconditioners.js";
+import { scrapeVestaAirConditioners } from "../scrapers/vesta/airconditioners.js";
+import { scrapeVlvAirConditioners } from "../scrapers/vlv/airconditioners.js";
+
+export async function runAirConditionersScraping() {
+  console.log("[scrape] 🔄 Starting AC-only scrape...");
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "airconditioners", scrapeRedstoreAirConditioners),
+    scrapeCategoryIntoSource("allsell", "airconditioners", scrapeAllsellAirConditioners),
+    scrapeCategoryIntoSource("vesta", "airconditioners", scrapeVestaAirConditioners),
+    scrapeCategoryIntoSource("vlv", "airconditioners", scrapeVlvAirConditioners),
+  ]);
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("eldorado", "airconditioners", scrapeEldoradoAirConditioners),
+  ]);
+  console.log("[scrape] ✅ AC-only scrape complete");
+}
 
 export async function runGamingScraping() {
   console.log("[scrape] 🔄 Starting gaming-only scrape...");

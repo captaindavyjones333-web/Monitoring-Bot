@@ -11,6 +11,7 @@ import {
   runTvsScraping,
   runDysonScraping,
   runGamingScraping,
+  runAirConditionersScraping,
 } from "../jobs/scrapeJob.js";
 import { runSendJob } from "../jobs/sendJob.js";
 import { loadAllCaches } from "../core/cache_manager.js";
@@ -20,9 +21,12 @@ import {
   buildCategoryMenu,
   filterMessagesByBrand,
 } from "../core/categoryMenu.js";
+import { searchProducts } from "../core/search.js";
 import dotenv from "dotenv";
 
 dotenv.config();
+const awaitingSearch = new Set();
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USERS_FILE = path.resolve(__dirname, "../data/users.json");
@@ -76,6 +80,8 @@ const CATEGORY_BUTTONS = [
   [{ text: "💻 Macbook" }, { text: "🔊 Խոսափողեր" }],
   [{ text: "📺 Հեռուստացույցներ" }, { text: "💇 Dyson" }],
   [{ text: "🎮 Gaming" }],
+  [{ text: "❄️ Օդորակիչներ" }],
+  [{ text: "🔍 Փնտրել" }],
 ];
 
 const MAIN_KEYBOARD = {
@@ -385,6 +391,56 @@ bot.on("message", async (msg) => {
 
   if (!text || text.startsWith("/")) return;
 
+  // Search-mode handling: if user is in awaitingSearch, treat next
+  // plain text as a query; if they pressed a real keyboard button,
+  // cancel search mode and fall through to normal handling.
+  if (awaitingSearch.has(userId)) {
+    console.log("Cancelling search mode");
+    awaitingSearch.delete(userId);
+
+    const isKnownButton =
+      text === "🔄 Լրիվ սկանավորում" ||
+      text === "🔍 Փնտրել" ||
+      text === "👥 Օգտատերեր" ||
+      Object.values(CATEGORY_CONFIG).some((c) => c.label === text);
+
+    if (!isKnownButton) {
+      const { messages, totalGroups } = searchProducts(text);
+
+      if (messages.length === 0) {
+        await bot.sendMessage(userId, "❌ Ոչինչ չի գտնվել", USER_KEYBOARD);
+        return;
+      }
+
+      const header =
+        totalGroups > messages.length
+          ? `🔍 Գտնվել է ${totalGroups}, ցուցադրվում է առաջին ${messages.length}-ը`
+          : `🔍 Գտնվել է ${messages.length}`;
+      await bot.sendMessage(userId, header, USER_KEYBOARD);
+
+      for (const msg of messages) {
+        await bot.sendMessage(userId, msg, { parse_mode: "Markdown" });
+      }
+      return;
+    }
+    // fall through to normal handling below if they pressed a real button
+  }
+
+  // Start search mode when user presses the search button
+  if (text === "🔍 Փնտրել") {
+    if (!isApproved(userId)) {
+      await bot.sendMessage(
+        userId,
+        "⛔ Դուք հասանելիություն չունեք: Ուղարկեք /start հայտ ներկայացնելու համար:",
+      );
+      return;
+    }
+    console.log("Starting search mode");
+    awaitingSearch.add(userId);
+    await bot.sendMessage(userId, "🔍 Գրեք ապրանքի անվանումը");
+    return;
+  }
+
   // Admin only
   if (text === "👥 Օգտատերեր") {
     if (!isAdmin(userId)) return;
@@ -416,6 +472,7 @@ bot.on("message", async (msg) => {
       await runTvsScraping();
       await runDysonScraping();
       await runGamingScraping();
+      await runAirConditionersScraping();
 
       const result = await runSendJob(false, false);
       const total = Object.values(result).reduce(

@@ -243,14 +243,11 @@ export function normalizeName(raw) {
   name = name.replace(/(\d+)\s*gb/gi, "$1gb");
   name = name.replace(/(\d+)\s*mm\b/gi, "$1mm");
 
-  // 7. Remove multi-word colors first
   for (const color of MULTIWORD_COLORS) {
-    name = name.replace(wordBoundaryRegex(color), "");
+    name = name.replace(wordBoundaryRegex(color), " ");
   }
-
-  // 8. Remove single-word colors
   for (const color of COLORS) {
-    name = name.replace(wordBoundaryRegex(color), "");
+    name = name.replace(wordBoundaryRegex(color), " ");
   }
 
   name = name.replace(/\bband\b/gi, "");
@@ -298,9 +295,15 @@ export function normalizeName(raw) {
   name = name.replace(/\bgps\b/gi, "");
   name = name.replace(/\b(aluminium|titanium|stainless steel)\s+case\b/gi, "");
   name = name.replace(/\bwith\s+.*?\s+sport\s+(band|loop)\b/gi, "");
-  name = name.replace(/\bwith\s+(?:[a-z]+\s+)?(ocean|trail|alpine|milanese)\s+(band|loop)\b/gi, "");
+  name = name.replace(
+    /\bwith\s+(?:[a-z]+\s+)?(ocean|trail|alpine|milanese)\s+(band|loop)\b/gi,
+    "",
+  );
   name = name.replace(/\b(ocean|trail|alpine)\s+(band|loop)\b/gi, "");
-  name = name.replace(/\bwatch\s+(\d{1,2}mm)\s+series\s*(\d{1,2})\b/gi, "watch series$2 $1");
+  name = name.replace(
+    /\bwatch\s+(\d{1,2}mm)\s+series\s*(\d{1,2})\b/gi,
+    "watch series$2 $1",
+  );
   name = name.replace(/\boriginal\s+/gi, "");
   name = name.replace(/\bs\/m\b/gi, "");
   name = name.replace(/\bm\/l\b/gi, "");

@@ -18,7 +18,7 @@ import { normalizeGamingName } from "./gamingNormalizer.js";
 const THRESHOLD_FLAT = 3000;
 const THRESHOLD_PERCENT = 0.1;
 
-const SOURCE_LABELS = {
+export const SOURCE_LABELS = {
   redstore: "RS",
   yerevanmobile: "YM",
   mobilecentre: "Mobile",
@@ -28,6 +28,8 @@ const SOURCE_LABELS = {
   ispace: "iSpace",
   eldorado: "Eldorado",
   zigzag: "Zigzag",
+  vesta: "Vesta",
+  vlv: "VLV",
 };
 
 const SOURCE_ORDER_BY_CATEGORY = {
@@ -75,6 +77,13 @@ const SOURCE_ORDER_BY_CATEGORY = {
     "3dplanet",
     "eldorado",
   ],
+  airconditioners: [
+    "redstore",
+    "allsell",
+    "eldorado",
+    "vesta",
+    "vlv",
+  ],
 };
 
 /**
@@ -94,6 +103,12 @@ function getFlag(rsPrice, competitorPrice) {
   const diff = rsPrice - competitorPrice;
   if (diff > THRESHOLD_FLAT || diff > rsPrice * THRESHOLD_PERCENT) return "❗";
   return "✅";
+}
+
+function formatInstallation(installation) {
+  if (installation === null || installation === undefined) return null;
+  if (installation === 0) return "անվճար";
+  return `${installation.toLocaleString("ru-RU").replace(/,/g, " ")} ֏`;
 }
 
 function formatPricePair(cash, installment, rsCash, rsInstallment, isRedstore) {
@@ -212,8 +227,10 @@ export function buildComparisons(groups, category) {
           rsInstallment,
           isRS,
         );
-        lines.push(`${label} - ${priceStr}`);
 
+        const installStr = formatInstallation(entry.installation_price);
+        if (installStr) lines.push(`  + Տեղադրում՝ ${installStr}`);
+        
         if (!isRS) {
           if (entry.cash_price) {
             const flag = getFlag(rsCash, entry.cash_price);
@@ -450,11 +467,13 @@ export function buildMacbookComparisons(groups) {
 
   const results = [];
 
-for (const [seriesKey, items] of seriesMap) {
+  for (const [seriesKey, items] of seriesMap) {
     items.sort((a, b) => (a.rsCash ?? 0) - (b.rsCash ?? 0));
 
     const hasAlert = items.some((item) => item.hasAlert);
-    const anyCompetitorAcrossItems = items.some((item) => item.hasAnyCompetitor);
+    const anyCompetitorAcrossItems = items.some(
+      (item) => item.hasAnyCompetitor,
+    );
     const allLines = [`*${seriesKey}*`];
 
     for (const item of items) {
@@ -824,6 +843,7 @@ export function splitAlertsByCategory(comparisons) {
     tvs: [],
     dyson: [],
     gaming: [],
+    airconditioners: [],
   };
 
   for (const item of alerts) {
@@ -841,6 +861,7 @@ export function splitAlertsByCategory(comparisons) {
     tvs: buckets.tvs.map((msg, i) => `${i + 1}. ${msg}`),
     dyson: buckets.dyson.map((msg, i) => `${i + 1}. ${msg}`),
     gaming: buckets.gaming.map((msg, i) => `${i + 1}. ${msg}`),
+    airconditioners: buckets.airconditioners.map((msg, i) => `${i + 1}. ${msg}`),
   };
 }
 
