@@ -1,6 +1,7 @@
 import puppeteer from "puppeteer";
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { getSimSuffixFromText } from "../../core/simClassifier.js";
 
 const BASE_URL = "https://3dplanet.am";
 
@@ -93,6 +94,27 @@ async function getStaticRam(puppeteerPage) {
   }
 }
 
+async function getStaticSim(puppeteerPage) {
+  try {
+    const specItems = await puppeteerPage.$$eval(
+      ".flex.items-center.gap-4",
+      (els) =>
+        els.map((el) => ({
+          label:
+            el.querySelector(".text-\\[\\#8C8C8C\\]")?.textContent?.trim() ||
+            "",
+          value: el.querySelector(".font-semibold")?.textContent?.trim() || "",
+        })),
+    );
+    const simSpec = specItems.find(
+      (s) => s.label.includes("Քարտերի քանակ") || s.label.includes("SIM"),
+    );
+    return simSpec?.value || null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
   try {
     await puppeteerPage.goto(url, {
@@ -165,9 +187,11 @@ async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
 
       if (modifiers.length === 0) {
         const staticRam = await getStaticRam(puppeteerPage);
+        const staticSim = await getStaticSim(puppeteerPage);
+        const simSuffix = getSimSuffixFromText(staticSim);
         const name = staticRam
-          ? `${baseName} ${staticRam}/${storage.label}`
-          : `${baseName} ${storage.label}`;
+          ? `${baseName} ${staticRam}/${storage.label}${simSuffix}`
+          : `${baseName} ${storage.label}${simSuffix}`;
         results.push({
           name,
           cash_price: storage.price,
@@ -234,7 +258,9 @@ export async function crawl3DPlanetCategory(listUrl, logTag) {
     }
   }
 
-  console.log(`[${logTag}] ${unique.length} unique products, fetching details...`);
+  console.log(
+    `[${logTag}] ${unique.length} unique products, fetching details...`,
+  );
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -259,7 +285,12 @@ export async function crawl3DPlanetCategory(listUrl, logTag) {
     for (let i = 0; i < unique.length; i++) {
       const { name, url } = unique[i];
       console.log(`[${logTag}] (${i + 1}/${unique.length}) ${name}`);
-      const variants = await fetchProductVariants(puppeteerPage, name, url, logTag);
+      const variants = await fetchProductVariants(
+        puppeteerPage,
+        name,
+        url,
+        logTag,
+      );
       console.log(
         `[${logTag}]   -> ${variants.length} variants: ${variants.map((v) => v.name).join(", ")}`,
       );

@@ -9,10 +9,12 @@ import {
   MACBOOK_REGEX,
   TV_REGEX,
   GAMING_REGEX,
+  AC_REGEX,
 } from "./categoryDetector.js";
 import { extractModelCode } from "./modelCode.js";
 import { extractTvModelCode } from "./tvModelCode.js";
 import { extractDysonKey } from "./dysonModelCode.js";
+import { extractACCode } from "./acModelCode.js";
 import { normalizeGamingName } from "./gamingNormalizer.js";
 
 const THRESHOLD_FLAT = 3000;
@@ -30,10 +32,20 @@ export const SOURCE_LABELS = {
   zigzag: "Zigzag",
   vesta: "Vesta",
   vlv: "VLV",
+  vega: "Vega",
 };
 
 const SOURCE_ORDER_BY_CATEGORY = {
-  phones: ["redstore", "yerevanmobile", "mobilecentre", "allsell", "3dplanet"],
+  phones: [
+    "redstore",
+    "yerevanmobile",
+    "mobilecentre",
+    "allsell",
+    "3dplanet",
+    "vega",
+    "zigzag",
+    "vlv",
+  ],
   tablets: ["redstore", "yerevanmobile", "mobilecentre", "allsell", "3dplanet"],
   watches: ["redstore", "yerevanmobile", "mobilecentre", "allsell", "3dplanet"],
   headphones: [
@@ -77,13 +89,7 @@ const SOURCE_ORDER_BY_CATEGORY = {
     "3dplanet",
     "eldorado",
   ],
-  airconditioners: [
-    "redstore",
-    "allsell",
-    "eldorado",
-    "vesta",
-    "vlv",
-  ],
+  airconditioners: ["redstore", "allsell", "eldorado", "vesta", "vlv"],
 };
 
 /**
@@ -155,9 +161,36 @@ function parseStorageValue(label) {
   return m[2].toLowerCase() === "tb" ? num * 1024 : num;
 }
 
+const TIER_1_BRANDS = ["iphone", "samsung", "xiaomi", "redmi", "poco", "google", "pixel"];
+
+const TIER_1_PHONE_SOURCES = [
+  "redstore",
+  "yerevanmobile",
+  "mobilecentre",
+  "allsell",
+  "3dplanet",
+];
+
+const TIER_2_PHONE_SOURCES = [
+  "redstore",
+  "yerevanmobile",
+  "3dplanet",
+  "zigzag",
+  "vega",
+  "vlv",
+  "allsell",
+];
+
+function getSourceOrderForProduct(modelKey, category) {
+  if (category !== "phones") {
+    return SOURCE_ORDER_BY_CATEGORY[category];
+  }
+  const isTier1 = TIER_1_BRANDS.some((b) => modelKey.toLowerCase().includes(b));
+  return isTier1 ? TIER_1_PHONE_SOURCES : TIER_2_PHONE_SOURCES;
+}
+
 export function buildComparisons(groups, category) {
   const buckets = new Map();
-  const sourceOrder = SOURCE_ORDER_BY_CATEGORY[category];
 
   for (const [key, group] of groups) {
     const rs = group.sources["redstore"];
@@ -173,6 +206,7 @@ export function buildComparisons(groups, category) {
   const results = [];
 
   for (const [modelKey, tiers] of buckets) {
+    const sourceOrder = getSourceOrderForProduct(modelKey, category);
     tiers.sort(
       (a, b) =>
         parseStorageValue(a.storageLabel) - parseStorageValue(b.storageLabel),
@@ -186,7 +220,7 @@ export function buildComparisons(groups, category) {
     const displayName = firstRs.name
       .replace(/\b\d+\s*(?:gb|tb)\b/gi, "")
       .replace(
-        /\b(Midnight|Starlight|Blue|Black|White|Red|Green|Yellow|Purple|Pink|Gold|Silver|Titanium|Natural|Desert|Ultramarine|Teal|Coral|Graphite|Alpine|Storm|Clay|Lavender|Mint|Sage|Cosmic Orange|Deep Blue|Sierra Blue|Space Gray|Space Grey|Deep Purple|Product Red|Sky Blue|Desert Titanium|Black Titanium|White Titanium|Natural Titanium|Rose Gold|Mocha|Brown|Navy|Orange)\b/gi,
+        /\b(Midnight|Starlight|Blue|Black|White|Red|Green|Yellow|Purple|Pink|Gold|Silver|Titanium|Natural|Desert|Ultramarine|Teal|Coral|Graphite|Alpine|Storm|Clay|Lavender|Mint|Sage|Cosmic Orange|Deep Blue|Sierra Blue|Space Gray|Space Grey|Deep Purple|Product Red|Sky Blue|Desert Titanium|Black Titanium|White Titanium|Natural Titanium|Rose Gold|Mocha|Brown|Navy|Orange|Porcelain|Obsidian|Hazel|Snow|Chalk|Charcoal|Fog|Lemongrass|Indigo|Jade|Moonstone|Bay|Aloe|Peony|Wintergreen|Sorta Seafoam|Sorta Sunny|Shadow|Jetblack|Onyx|Cobalt|Marble|Amber|Peach|Lime|Emerald|Phantom|Crafted|Icy|Silver Shadow|Blue Shadow|White Shadow|Black Shadow|Violet Shadow|Peach Pink|Onyx Black|Cobalt Violet|Marble Gray|Marble Grey|Amber Yellow|Titanium Jetblack|Crafted Black|Icy Blue|Gray|Grey)\b/gi,
         "",
       )
       .replace(/\s+/g, " ")
@@ -227,10 +261,11 @@ export function buildComparisons(groups, category) {
           rsInstallment,
           isRS,
         );
+        lines.push(`${label} - ${priceStr}`);
 
         const installStr = formatInstallation(entry.installation_price);
         if (installStr) lines.push(`  + Տեղադրում՝ ${installStr}`);
-        
+
         if (!isRS) {
           if (entry.cash_price) {
             const flag = getFlag(rsCash, entry.cash_price);
@@ -261,32 +296,38 @@ export function buildComparisons(groups, category) {
 // ─── Code-based comparison, used for macbooks ──────────────────────────────
 
 export function groupMacbooksByCode(products) {
-  const redstoreProducts = products.filter((p) => p.source === "redstore");
-  const otherProducts = products.filter((p) => p.source !== "redstore");
-
   const groups = new Map();
 
-  // Anchor: extract codes only from redstore, since its formatting is
-  // clean and consistent. Every group is seeded by a real redstore code.
-  for (const product of redstoreProducts) {
+  // First pass: extract codes directly from all products
+  for (const product of products) {
     const code = extractModelCode(product.name);
-    if (!code) continue; // skip redstore products with no extractable code
+    if (!code) continue;
 
     if (!groups.has(code)) {
       groups.set(code, { normalized: code, code, sources: {} });
     }
     const group = groups.get(code);
-    group.sources["redstore"] = {
+
+    const existing = group.sources[product.source];
+    if (existing) {
+      const newCash = product.cash_price ?? Infinity;
+      const oldCash = existing.cash_price ?? Infinity;
+      if (newCash >= oldCash) continue;
+    }
+
+    group.sources[product.source] = {
       name: product.name,
       cash_price: product.cash_price ?? null,
       installment_price: product.installment_price ?? null,
     };
   }
 
-  // For every other product, find which redstore code (if any) appears
-  // as a substring of its name — sidesteps needing each site's own
-  // regex extraction to produce an identical string.
-  for (const product of otherProducts) {
+  // Second pass: for products with no direct model code extracted,
+  // find which seeded code appears as a substring
+  for (const product of products) {
+    const directCode = extractModelCode(product.name);
+    if (directCode) continue;
+
     const upperName = product.name.toUpperCase();
     let matchedCode = null;
 
@@ -297,7 +338,7 @@ export function groupMacbooksByCode(products) {
       }
     }
 
-    if (!matchedCode) continue; // no matching redstore code found, skip
+    if (!matchedCode) continue;
 
     const group = groups.get(matchedCode);
     const existing = group.sources[product.source];
@@ -363,7 +404,7 @@ function extractStorageFromGroup(group) {
 }
 
 /**
- * Extract a "series key" from a redstore macbook name.
+ * Extract a "series key" from a macbook name.
  * e.g. "MacBook Air 13.6'' M5 MDHE4(Midnight)" → "MacBook Air 13.6'' M5"
  * This strips model code, color, parentheses, and trailing whitespace.
  */
@@ -376,10 +417,19 @@ function getMacbookSeriesKey(name, code) {
       "",
     );
   }
+
+  if (cleaned.includes("/")) {
+    const parts = cleaned.split("/").map((s) => s.trim());
+    let base = parts[0];
+    if (parts[1] && /^M\d/i.test(parts[1])) {
+      base += ` ${parts[1]}`;
+    }
+    cleaned = base;
+  }
+
   // Remove color in parentheses and any remaining parenthesized text
   cleaned = cleaned.replace(/\(.*?\)/g, "");
-  // Remove trailing chip variant suffixes that come AFTER the chip name
-  // (e.g. keep "M5 Pro" but don't duplicate)
+  cleaned = cleaned.replace(/^Apple\s+/i, "");
   cleaned = cleaned.replace(/\s+/g, " ").trim();
   return cleaned;
 }
@@ -390,10 +440,10 @@ export function buildMacbookComparisons(groups) {
 
   for (const [key, group] of groups) {
     const rs = group.sources["redstore"];
-    if (!rs) continue;
+    if (!rs) continue; // Only alert for models that exist in RS
 
-    const rsCash = rs.cash_price;
-    const rsInstallment = rs.installment_price;
+    const anchorCash = rs.cash_price;
+    const anchorInstallment = rs.installment_price;
     const storage = extractStorageFromGroup(group);
     const seriesKey = getMacbookSeriesKey(rs.name, group.code);
 
@@ -406,6 +456,8 @@ export function buildMacbookComparisons(groups) {
     const subHeader = [storagePart, codePart].filter(Boolean).join(" ");
     if (subHeader) lines.push(`\n_${subHeader}_`);
 
+    const anchorSourceName = "redstore";
+
     for (const source of sourceOrder) {
       const entry = group.sources[source];
       const label = SOURCE_LABELS[source];
@@ -416,24 +468,24 @@ export function buildMacbookComparisons(groups) {
         continue;
       }
 
-      const isRS = source === "redstore";
+      const isAnchor = source === anchorSourceName;
       const priceStr = formatPricePair(
         entry.cash_price,
         entry.installment_price,
-        rsCash,
-        rsInstallment,
-        isRS,
+        anchorCash,
+        anchorInstallment,
+        isAnchor,
       );
       lines.push(`${label} - ${priceStr}`);
 
-      if (!isRS) {
+      if (!isAnchor) {
         if (entry.cash_price) {
-          const flag = getFlag(rsCash, entry.cash_price);
+          const flag = getFlag(anchorCash, entry.cash_price);
           if (flag === "❗" || flag === "✅") hasAlert = true;
         }
         if (entry.installment_price) {
           const flag = getFlag(
-            rsInstallment ?? rsCash,
+            anchorInstallment ?? anchorCash,
             entry.installment_price,
           );
           if (flag === "❗" || flag === "✅") hasAlert = true;
@@ -451,7 +503,7 @@ export function buildMacbookComparisons(groups) {
       storage,
       hasAlert,
       hasAnyCompetitor,
-      rsCash,
+      rsCash: anchorCash,
       lines,
     });
   }
@@ -791,6 +843,97 @@ export function buildGamingComparisons(groups) {
   return results;
 }
 
+export function groupACsByCode(products) {
+  const groups = new Map();
+
+  for (const product of products) {
+    const code = extractACCode(product.name);
+    if (!code) continue;
+    const key = code;
+
+    if (!groups.has(key)) {
+      groups.set(key, { normalized: key, sources: {} });
+    }
+    const group = groups.get(key);
+    const existing = group.sources[product.source];
+    if (existing) {
+      const newCash = product.cash_price ?? Infinity;
+      const oldCash = existing.cash_price ?? Infinity;
+      if (newCash >= oldCash) continue;
+    }
+    group.sources[product.source] = {
+      name: product.name,
+      cash_price: product.cash_price ?? null,
+      installment_price: product.installment_price ?? null,
+      installation_price: product.installation_price ?? null,
+    };
+  }
+
+  return groups;
+}
+
+export function buildACComparisons(groups) {
+  const sourceOrder = SOURCE_ORDER_BY_CATEGORY.airconditioners;
+  const results = [];
+
+  for (const [key, group] of groups) {
+    const rs = group.sources["redstore"];
+    if (!rs) continue;
+
+    const rsCash = rs.cash_price;
+    const rsInstallment = rs.installment_price;
+
+    let hasAlert = false;
+    const lines = [];
+
+    const displayName = rs.name.replace(/\s+/g, " ").trim();
+    lines.push(`*${displayName}*`);
+
+    for (const source of sourceOrder) {
+      const entry = group.sources[source];
+      const label = SOURCE_LABELS[source];
+      if (!label) continue;
+
+      if (!entry) {
+        lines.push(`${label} - Առկա չէ`);
+        continue;
+      }
+
+      const isRS = source === "redstore";
+      const priceStr = formatPricePair(
+        entry.cash_price,
+        entry.installment_price,
+        rsCash,
+        rsInstallment,
+        isRS,
+      );
+      lines.push(`${label} - ${priceStr}`);
+
+      const installStr = formatInstallation(entry.installation_price);
+      if (installStr) lines.push(`  + Տեղադրում՝ ${installStr}`);
+
+      if (!isRS) {
+        if (entry.cash_price) {
+          const flag = getFlag(rsCash, entry.cash_price);
+          if (flag === "❗" || flag === "✅") hasAlert = true;
+        }
+        if (entry.installment_price) {
+          const flag = getFlag(
+            rsInstallment ?? rsCash,
+            entry.installment_price,
+          );
+          if (flag === "❗" || flag === "✅") hasAlert = true;
+        }
+      }
+    }
+
+    const finalHasAlert = hasAlert && hasAnyCompetitorEntry(group.sources);
+    results.push({ key, hasAlert: finalHasAlert, message: lines.join("\n") });
+  }
+
+  return results;
+}
+
 // ─── Sorting / final message assembly ──────────────────────────────────────
 
 const IPHONE_ORDER = [
@@ -798,15 +941,35 @@ const IPHONE_ORDER = [
   "iphone 14",
   "iphone 15",
   "iphone 16",
+  "iphone 17e",
   "iphone 17",
+  "iphone 17 air",
+  "iphone 17 pro",
+  "iphone 17 pro max",
 ];
 const SAMSUNG_ORDER = ["galaxy a", "galaxy s", "galaxy z"];
+
+function getIphoneSortIndex(name) {
+  const specificityOrder = [
+    "iphone 17e",
+    "iphone 17 pro max",
+    "iphone 17 pro",
+    "iphone 17 air",
+    "iphone 17",
+    "iphone 16",
+    "iphone 15",
+    "iphone 14",
+    "iphone 13",
+  ];
+  const matched = specificityOrder.find((m) => name.includes(m));
+  return matched ? IPHONE_ORDER.indexOf(matched) : 99;
+}
 
 function getSortKey(message) {
   const name = message.toLowerCase();
 
   if (name.includes("iphone")) {
-    const model = IPHONE_ORDER.findIndex((m) => name.includes(m));
+    const model = getIphoneSortIndex(name);
     return `0_${model >= 0 ? model : 99}_${name}`;
   }
   if (name.includes("samsung")) {
@@ -824,6 +987,77 @@ function getSortKey(message) {
   if (name.includes("oneplus")) return `4_${name}`;
   if (name.includes("nothing")) return `5_${name}`;
   return `6_${name}`;
+}
+
+function getPhoneGroupKey(message) {
+  const name = message.toLowerCase();
+
+  // 1. iPhones: Group by generation series (e.g. 13 series, 14 series, 15 series, 16 series, 17 series incl. Air)
+  if (name.includes("iphone")) {
+    if (name.includes("iphone 17") || name.includes("iphone air")) return "0_iphone_17";
+    if (name.includes("iphone 16")) return "0_iphone_16";
+    if (name.includes("iphone 15")) return "0_iphone_15";
+    if (name.includes("iphone 14")) return "0_iphone_14";
+    if (name.includes("iphone 13")) return "0_iphone_13";
+    if (name.includes("iphone 12")) return "0_iphone_12";
+    if (name.includes("iphone 11")) return "0_iphone_11";
+    if (name.includes("iphone se")) return "0_iphone_se";
+    return "0_iphone_other";
+  }
+
+  // 2. Samsung: S series in one message, Z series in one message, A series in one message
+  if (name.includes("samsung") || name.includes("galaxy")) {
+    if (name.includes("galaxy s")) return "1_samsung_s";
+    if (name.includes("galaxy z") || name.includes("fold") || name.includes("flip")) return "1_samsung_z";
+    if (name.includes("galaxy a")) return "1_samsung_a";
+    return "1_samsung_other";
+  }
+
+  // 3. Xiaomi: Poco series in one message, Redmi series in one message, Note series in one message, others in one message
+  if (name.includes("xiaomi") || name.includes("redmi") || name.includes("poco")) {
+    if (name.includes("poco")) return "2_xiaomi_poco";
+    if (name.includes("note")) return "2_xiaomi_note";
+    if (name.includes("redmi")) return "2_xiaomi_redmi";
+    return "2_xiaomi_other";
+  }
+
+  // 4. Google Pixel: All in one message
+  if (name.includes("google") || name.includes("pixel")) {
+    return "3_google_pixel";
+  }
+
+  // 5. Other brands: One message per brand (Honor, OnePlus, Nothing, Asus, ZTE, etc.)
+  const brands = ["honor", "oneplus", "nothing", "asus", "zte", "sony", "huawei", "oppo", "realme", "motorola", "nokia"];
+  for (const b of brands) {
+    if (name.includes(b)) return `4_brand_${b}`;
+  }
+
+  return `5_other_${name.split("\n")[0]}`;
+}
+
+function groupPhoneAlerts(phoneMessages) {
+  const groups = new Map();
+
+  for (const msg of phoneMessages) {
+    const groupKey = getPhoneGroupKey(msg);
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey).push(msg);
+  }
+
+  const resultMessages = [];
+  let counter = 1;
+
+  for (const [groupKey, msgs] of groups) {
+    if (msgs.length === 1) {
+      resultMessages.push(`${counter}. ${msgs[0]}`);
+    } else {
+      const combined = msgs.map((m) => m.trim()).join("\n\n");
+      resultMessages.push(`${counter}. ${combined}`);
+    }
+    counter++;
+  }
+
+  return resultMessages;
 }
 
 export function splitAlertsByCategory(comparisons) {
@@ -852,7 +1086,7 @@ export function splitAlertsByCategory(comparisons) {
   }
 
   return {
-    phones: buckets.phones.map((msg, i) => `${i + 1}. ${msg}`),
+    phones: groupPhoneAlerts(buckets.phones),
     tablets: buckets.tablets.map((msg, i) => `${i + 1}. ${msg}`),
     watches: buckets.watches.map((msg, i) => `${i + 1}. ${msg}`),
     headphones: buckets.headphones.map((msg, i) => `${i + 1}. ${msg}`),
@@ -861,7 +1095,9 @@ export function splitAlertsByCategory(comparisons) {
     tvs: buckets.tvs.map((msg, i) => `${i + 1}. ${msg}`),
     dyson: buckets.dyson.map((msg, i) => `${i + 1}. ${msg}`),
     gaming: buckets.gaming.map((msg, i) => `${i + 1}. ${msg}`),
-    airconditioners: buckets.airconditioners.map((msg, i) => `${i + 1}. ${msg}`),
+    airconditioners: buckets.airconditioners.map(
+      (msg, i) => `${i + 1}. ${msg}`,
+    ),
   };
 }
 
@@ -889,12 +1125,22 @@ export function runComparison(allProducts) {
       !/\bdyson\b/i.test(p.name),
   );
 
+  const acProducts = allProducts.filter(
+    (p) =>
+      (AC_REGEX.test(p.name) || p.installation_price !== undefined) &&
+      !MACBOOK_REGEX.test(p.name) &&
+      !TV_REGEX.test(p.name) &&
+      !/\bdyson\b/i.test(p.name) &&
+      !GAMING_REGEX.test(p.name),
+  );
+
   const remaining = allProducts.filter(
     (p) =>
       !MACBOOK_REGEX.test(p.name) &&
       !TV_REGEX.test(p.name) &&
       !/\bdyson\b/i.test(p.name) &&
-      !GAMING_REGEX.test(p.name),
+      !GAMING_REGEX.test(p.name) &&
+      !(AC_REGEX.test(p.name) || p.installation_price !== undefined),
   );
 
   const byCategory = {
@@ -925,6 +1171,7 @@ export function runComparison(allProducts) {
   const gamingComparisons = buildGamingComparisons(
     groupGamingByName(gamingProducts),
   );
+  const acComparisons = buildACComparisons(groupACsByCode(acProducts));
 
   const allComparisons = [
     ...otherComparisons,
@@ -932,6 +1179,7 @@ export function runComparison(allProducts) {
     ...tvComparisons,
     ...dysonComparisons,
     ...gamingComparisons,
+    ...acComparisons,
   ];
   return splitAlertsByCategory(allComparisons);
 }

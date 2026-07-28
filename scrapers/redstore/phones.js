@@ -7,13 +7,16 @@ const BRAND_IDS = {
   google: 352,
   oneplus: 304,
   nothing: 478,
+  asus: 310,
+  honor: 498,
+  zte: 335,
 };
 
 function getSimSuffix(simValue) {
   const s = simValue.trim().toLowerCase();
   switch (s) {
     case "2 esim":
-      return " Dual eSim";
+      return " eSim";
     case "1 sim + esim":
       return " Nano-Sim";
     case "2 sim":

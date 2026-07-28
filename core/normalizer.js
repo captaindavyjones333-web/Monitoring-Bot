@@ -46,6 +46,50 @@ const COLORS = [
   "violet",
   "bronze",
   "squad",
+  "porcelain",
+  "obsidian",
+  "hazel",
+  "snow",
+  "chalk",
+  "charcoal",
+  "fog",
+  "lemongrass",
+  "indigo",
+  "jade",
+  "moonstone",
+  "bay",
+  "aloe",
+  "peony",
+  "wintergreen",
+  "rose",
+  "shadow",
+  "jetblack",
+  "onyx",
+  "cobalt",
+  "marble",
+  "amber",
+  "peach",
+  "lime",
+  "emerald",
+  "phantom",
+  "crafted",
+  "icy",
+  // OnePlus / Nothing / Asus / Honor brand colors
+  "celadon",
+  "eternal",
+  "rebel",
+  "ebony",
+  "starry",
+  "forest",
+  "marrs",
+  "cyan",
+  "velvet",
+  "meteor",
+  "lunar",
+  "sunrise",
+  "ocean",
+  "titan",
+  "aloe",
 ];
 
 const ARMENIAN_COLORS = {
@@ -78,6 +122,57 @@ const MULTIWORD_COLORS = [
   "cosmic orange",
   "moonstone gray",
   "moonstone grey",
+  "sorta seafoam",
+  "sorta sunny",
+  "oh so orange",
+  "clearly white",
+  "just black",
+  "kinda blue",
+  "really blue",
+  "silver shadow",
+  "blue shadow",
+  "white shadow",
+  "black shadow",
+  "violet shadow",
+  "peach pink",
+  "onyx black",
+  "cobalt violet",
+  "marble gray",
+  "marble grey",
+  "amber yellow",
+  "titanium jetblack",
+  "crafted black",
+  "icy blue",
+  "phantom black",
+  "phantom silver",
+  "phantom green",
+  "phantom violet",
+  // OnePlus / Nothing / Asus / Honor multi-word colors
+  "celadon marble",
+  "marrs green",
+  "jade cyan",
+  "ocean cyan",
+  "starry purple",
+  "eternal green",
+  "rebel gray",
+  "rebel grey",
+  "lunar grey",
+  "lunar gray",
+  "sunrise gold",
+  "velvet black",
+  "velvet grey",
+  "velvet gray",
+  "midnight black",
+  "forest green",
+  "light blue",
+  "light green",
+  "desert gold",
+  "arctic down",
+  "titan black",
+  "titan silver",
+  "interstellar black",
+  "galactic silver",
+  "tropical rain",
 ];
 
 const CONNECTIVITY = ["4g", "lte", "dual sim", "dual-sim"];
@@ -103,7 +198,7 @@ function stripConnectivityWords(name) {
   return name
     .replace(/\bwi[\s-]?fi\b/gi, "")
     .replace(/\+?\s*\bcellular\b/gi, "")
-    .replace(/\b(5g|4g|lte|gsm|hspa|umts|cdma)\b/gi, "")
+    .replace(/\b(lte|gsm|hspa|umts|cdma)\b/gi, "")
     .replace(/\bnano-?sim\b/gi, "")
     .replace(/\bdual-?sim\b/gi, "")
     .replace(/\s+/g, " ")
@@ -144,14 +239,25 @@ export function normalizeName(raw) {
 
   name = decodeSpeakerSkus(name);
 
-  const connectivity = extractConnectivity(name);
+  let connectivity = extractConnectivity(name);
+
+  if (/\bgalaxy\s*s26\b/.test(name)) {
+    connectivity = null;
+  }
 
   // 1. Normalize Russian GB: "256 ГБ" -> "256gb"
   name = name.replace(/(\d+)\s*гб/gi, "$1gb");
 
+  // 1b. Strip Armenian "Սmарт հeռախoս" / "Սмарθ հeռaxos" store prefix (Vega)
+  name = name.replace(/^սмарт\s+հeռaxos\s+/i, "");
+  name = name.replace(/^[\u0531-\u058f\s]+(?=\b(?:apple|samsung|xiaomi|redmi|poco|google|oneplus|nothing|asus|honor|sony|huawei|oppo|realme|motorola|nokia|lg)\b)/i, "");
+
   // 2. Strip "Apple" brand prefix
   name = name.replace(/^apple\s+/, "");
   name = name.replace(/\bwi[\s-]?fi\s*\+\s*cellular\b/gi, "cellular");
+
+  // 2a. Normalize compacted model numbers: "magic8" -> "magic 8", "magic7" -> "magic 7"
+  name = name.replace(/\b(magic)(\d+)\b/gi, "$1 $2");
 
   // 2b. Normalize Plus variants: "Pro+" / "Pro Plus" / "Pro +" → "pro plus"
   name = name.replace(/\bfold\s*(\d{1,2})\b/gi, "fold$1");
@@ -250,8 +356,9 @@ export function normalizeName(raw) {
     name = name.replace(wordBoundaryRegex(color), " ");
   }
 
-  name = name.replace(/\bband\b/gi, "");
+  name = name.replace(/\bband\b(?!\s*\d)/gi, "");
   name = name.replace(/\s+/g, " ").trim();
+  name = name.replace(/\bband\s*(\d{1,2})\b/gi, "band$1");
 
   // 9. Remove connectivity suffixes (NOT esim/nanosim)
   for (const conn of CONNECTIVITY) {
@@ -261,6 +368,14 @@ export function normalizeName(raw) {
   // 9b. Strip "dual" prefix before esim (e.g. "Dual eSIM" -> "esim")
   name = name.replace(/\bdual\s+(?=esim)/gi, "");
 
+  // 9c. Strip vendor model codes BEFORE punctuation normalization
+  //     so hyphens inside codes (ABR-LX1) are still intact.
+  name = name.replace(/\b[a-z]{2,4}-[a-z]{1,3}\d{1,2}\b/gi, ""); // ABR-LX1 style
+  name = name.replace(/\b[a-z]{2,4}\d{4,6}\b/gi, ""); // CPH2653 / RMX3461 style
+  name = name.replace(/\b\d{7,}[a-z0-9]{0,4}\b/gi, ""); // Numeric product IDs (5011110325)
+  name = name.replace(/\b\d{4}[a-z]{2,4}\b/gi, ""); // 5109BQCR style
+  name = name.replace(/\s+/g, " ").trim();
+
   // 10. Clean punctuation and whitespace
   name = name
     .replace(/[,\-_\/\\&+]+/g, " ")
@@ -268,7 +383,7 @@ export function normalizeName(raw) {
     .trim();
 
   name = name.replace(
-    /\b(lte|4g|5g|gsm|hspa|umts|cdma|nanosim|dualsim|cellular)\b/gi,
+    /\b(lte|gsm|hspa|umts|cdma|nanosim|dualsim|cellular)\b/gi,
     "cellular",
   );
   // A cellular tablet always has wifi too — drop the redundant "wifi"
@@ -285,11 +400,36 @@ export function normalizeName(raw) {
   // (Samsung "X133", "X230"...; Apple "MXNA3", "MD3Y4"...). Guarded by
   // length + mixed letter/digit check so it never touches real model
   // identifiers like "a11", "s10", or Apple chip names "m3"/"m4"/"m5".
+  name = name.replace(/\b(cf|cn)\b/gi, "");
   name = name.replace(/\bsm[\s-]?[a-z0-9]{3,6}\b/gi, "");
-  name = name.replace(/\b[xmlr][a-z0-9]{2,6}\b/gi, (tok) => {
+  name = name.replace(/\bbhr\d{4,5}[a-z0-9]*\b/gi, "");
+  // Strip Honor / OnePlus model codes: ABR-LX1, CPH2653, RMX3461, etc.
+  // Handle hyphenated codes like ABR-LX1 (dash breaks word boundaries)
+  name = name.replace(/\b[a-z]{2,4}-[a-z]{1,3}\d{1,2}\b/gi, ""); // ABR-LX1 style
+  name = name.replace(/\b[a-z]{2,4}\d{4,6}\b/gi, ""); // CPH2653 style
+  // Strip numeric-only barcodes / product IDs (5109BQCR, 5011110325)
+  name = name.replace(/\b\d{7,}[a-z]{0,4}\b/gi, "");
+  name = name.replace(/\b\d{4}[a-z]{2,4}\b/gi, ""); // 5109BQCR style
+  // Deduplicate repeated storage tokens (e.g. "8gb 256gb 8gb 256gb" -> "8gb 256gb")
+  name = name.replace(/((?:\d+(?:gb|tb)\s+)+)\1+/gi, (m, g1) => g1.trimEnd() + " ").trim();
+  name = name.replace(/\b(\d+gb)\s+(\d+gb)\s+\1\s+\2\b/gi, "$1 $2");
+  name = name.replace(/\b[a-z][a-z0-9]{3,9}\b/gi, (tok) => {
     const hasDigit = /\d/.test(tok);
     const hasLetter = /[a-z]/i.test(tok);
-    return hasDigit && hasLetter ? "" : tok;
+    if (!hasDigit || !hasLetter) return tok;
+    if (
+      /^(iphone|ipad|macbook|galaxy|band|watch|buds|airpods|redmi|poco|pixel|dyson|fold|flip|se|tab|magic|zenfone|nord|cmf)\d+/i.test(
+        tok,
+      )
+    )
+      return tok;
+    if (
+      /^(m1|m2|m3|m4|m5|a15|a16|a17|a18|a19|s24|s25|s26|a14|a15|a16|a17|a34|a35|a36|a37|a54|a55|a56|a57|4g|5g)$/i.test(
+        tok,
+      )
+    )
+      return tok;
+    return "";
   });
   name = name.replace(/\s+/g, " ").trim();
   name = name.replace(/\bgps\b/gi, "");
@@ -379,6 +519,10 @@ function stripStorage(key) {
 function reorderTokens(name) {
   // Ensure storage always appears before sim tokens for consistent keys
   // e.g. "iphone 17 pro max esim 256gb" -> "iphone 17 pro max 256gb esim"
+  // Sim tokens are deduplicated (a Set) so that names like
+  // "Apple iPhone 17 Pro Max (eSim) 2TB eSim" — where the paren-extraction
+  // step and the trailing suffix both emit "esim" — don't produce "esim esim".
+  const seenSim = new Set();
   const simTokens = [];
   const storageTokens = [];
   const otherTokens = [];
@@ -389,9 +533,12 @@ function reorderTokens(name) {
       ["esim", "nanosim", "dualsim", "wifi", "lte", "5g", "cellular"].includes(
         token,
       )
-    )
-      simTokens.push(token);
-    else otherTokens.push(token);
+    ) {
+      if (!seenSim.has(token)) {
+        simTokens.push(token);
+        seenSim.add(token);
+      }
+    } else otherTokens.push(token);
   }
 
   return [...otherTokens, ...storageTokens, ...simTokens].join(" ");
@@ -399,6 +546,7 @@ function reorderTokens(name) {
 
 function getMatchKey(key) {
   return key
+    .replace(/\s+cellular\b/g, "")
     .replace(/\s+nanosim\b/g, "")
     .replace(/\s+dual\b/g, "")
     .replace(/\s+/g, " ")
@@ -491,7 +639,11 @@ export function getModelKey(key) {
   // stripped as one block, since RAM is fixed per model — different
   // storage tiers of the same phone/RAM combo should share one message.
   const { tokens } = getTrailingStorageRun(key);
-  return tokens.join(" ").replace(/\s+/g, " ").trim();
+  return tokens
+    .filter((t) => t !== "cellular")
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function getStorageLabel(key) {

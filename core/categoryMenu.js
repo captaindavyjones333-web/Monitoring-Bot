@@ -5,6 +5,12 @@ export const CATEGORY_CONFIG = {
       { label: "iPhone", match: /iphone/i },
       { label: "Samsung", match: /samsung/i },
       { label: "Xiaomi", match: /xiaomi|poco|redmi/i },
+      { label: "Google", match: /google|pixel/i },
+      { label: "OnePlus", match: /oneplus/i },
+      { label: "Nothing", match: /nothing/i },
+      { label: "Asus", match: /\basus\b|\brog\b/i },
+      { label: "Honor", match: /honor/i },
+      { label: "ZTE", match: /\bzte\b/i },
     ],
   },
   tablets: {
@@ -66,7 +72,11 @@ export const CATEGORY_CONFIG = {
   },
   airconditioners: {
     label: "❄️ Օդորակիչներ",
-    brands: [],
+    brands: [
+      { label: "Hisense", match: /hisense/i },
+      { label: "Midea", match: /midea/i },
+      { label: "Samsung", match: /samsung/i },
+    ],
   },
 };
 

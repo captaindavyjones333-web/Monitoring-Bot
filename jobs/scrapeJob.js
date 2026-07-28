@@ -56,17 +56,40 @@ import { scrapeAllsellAirConditioners } from "../scrapers/allsell/airconditioner
 import { scrapeEldoradoAirConditioners } from "../scrapers/eldorado/airconditioners.js";
 import { scrapeVestaAirConditioners } from "../scrapers/vesta/airconditioners.js";
 import { scrapeVlvAirConditioners } from "../scrapers/vlv/airconditioners.js";
+import { scrapeVegaPhones } from "../scrapers/vega/phones.js";
+import { scrapeZigzagPhones } from "../scrapers/zigzag/phones.js";
+import { scrapeVlvPhones } from "../scrapers/vlv/phones.js";
 
 export async function runAirConditionersScraping() {
   console.log("[scrape] 🔄 Starting AC-only scrape...");
   await Promise.allSettled([
-    scrapeCategoryIntoSource("redstore", "airconditioners", scrapeRedstoreAirConditioners),
-    scrapeCategoryIntoSource("allsell", "airconditioners", scrapeAllsellAirConditioners),
-    scrapeCategoryIntoSource("vesta", "airconditioners", scrapeVestaAirConditioners),
-    scrapeCategoryIntoSource("vlv", "airconditioners", scrapeVlvAirConditioners),
+    scrapeCategoryIntoSource(
+      "redstore",
+      "airconditioners",
+      scrapeRedstoreAirConditioners,
+    ),
+    scrapeCategoryIntoSource(
+      "allsell",
+      "airconditioners",
+      scrapeAllsellAirConditioners,
+    ),
+    scrapeCategoryIntoSource(
+      "vesta",
+      "airconditioners",
+      scrapeVestaAirConditioners,
+    ),
+    scrapeCategoryIntoSource(
+      "vlv",
+      "airconditioners",
+      scrapeVlvAirConditioners,
+    ),
   ]);
   await Promise.allSettled([
-    scrapeCategoryIntoSource("eldorado", "airconditioners", scrapeEldoradoAirConditioners),
+    scrapeCategoryIntoSource(
+      "eldorado",
+      "airconditioners",
+      scrapeEldoradoAirConditioners,
+    ),
   ]);
   console.log("[scrape] ✅ AC-only scrape complete");
 }
@@ -280,6 +303,34 @@ export async function runHeadphonesScraping() {
   console.log("[scrape] ✅ Headphones-only scrape complete");
 }
 
+export async function runPhonesScraping() {
+  console.log("[scrape] 🔄 Starting phones-only scrape...");
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "phones", scrapeRedstorePhones),
+    scrapeCategoryIntoSource(
+      "yerevanmobile",
+      "phones",
+      scrapeYerevanMobilePhones,
+    ),
+    scrapeCategoryIntoSource("allsell", "phones", scrapeAllsellPhones),
+    scrapeCategoryIntoSource("vega", "phones", scrapeVegaPhones),
+    scrapeCategoryIntoSource("vlv", "phones", scrapeVlvPhones),
+  ]);
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource(
+      "mobilecentre",
+      "phones",
+      scrapeMobileCentrePhones,
+    ),
+    scrapeCategoryIntoSource("3dplanet", "phones", scrape3DPlanetPhones),
+    scrapeCategoryIntoSource("zigzag", "phones", scrapeZigzagPhones),
+  ]);
+
+  console.log("[scrape] ✅ Phones-only scrape complete");
+}
+
 async function runScraperSequential(fns, source) {
   try {
     console.log(`[scrape] Scraping ${source}...`);
@@ -357,6 +408,8 @@ export async function runScraping() {
       [scrapeAllsellPhones, scrapeAllsellTablets, scrapeAllsellWatches],
       "allsell",
     ),
+    runScraper([scrapeVegaPhones], "vega"),
+    runScraper([scrapeVlvPhones], "vlv"),
   ]);
 
   console.log("[scrape] Group 2: Puppeteer scrapers (parallel)...");
@@ -373,6 +426,7 @@ export async function runScraping() {
       [scrape3DPlanetPhones, scrape3DPlanetTablets, scrape3DPlanetWatches],
       "3dplanet",
     ),
+    runScraper([scrapeZigzagPhones], "zigzag"),
   ]);
 
   console.log("[scrape] ✅ Scrape job complete");

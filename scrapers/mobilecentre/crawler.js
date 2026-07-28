@@ -1,5 +1,6 @@
 import puppeteer from "puppeteer";
 import * as cheerio from "cheerio";
+import { getSimSuffixFromText } from "../../core/simClassifier.js";
 
 function parsePrice(text) {
   const match = text.replace(/\s/g, "").match(/([\d,]+)դր/);
@@ -24,6 +25,25 @@ function extractRam($) {
     }
   });
   return ram;
+}
+
+function extractSimText($) {
+  let simText = null;
+  $(".dlabel").each((_, el) => {
+    const label = $(el).text().trim();
+    if (label === "SIM card" || label === "SIM քարտ") {
+      simText = $(el).next(".value").text().trim();
+    }
+  });
+  if (simText) return simText;
+
+  $(".rowname").each((_, el) => {
+    const label = $(el).text().trim();
+    if (label.includes("SIM քարտի քանակ")) {
+      simText = $(el).next().text().trim();
+    }
+  });
+  return simText;
 }
 
 async function getAllProductUrls(page, listUrl, logTag) {
@@ -135,6 +155,12 @@ async function fetchVariants(
         ram && !fullName.toLowerCase().includes("gb/")
           ? fullName.replace(/(\d+\s*gb)/i, `${ram}/$1`)
           : fullName;
+      const simText = extractSimText($);
+      const simSuffix = getSimSuffixFromText(simText);
+      const nameWithSim =
+        simSuffix && !nameWithRam.toLowerCase().includes("sim")
+          ? `${nameWithRam}${simSuffix}`
+          : nameWithRam;
 
       const priceText = $(".price .regular")
         .clone()
@@ -153,13 +179,13 @@ async function fetchVariants(
 
       if (cashPrice) {
         globalVisited.set(currentId, {
-          name: nameWithRam,
+          name: nameWithSim,
           cash_price: cashPrice,
           installment_price: installmentPrice,
           source: "mobilecentre",
         });
         console.log(
-          `[${logTag}] -> [${currentId}] "${nameWithRam}" cash:${cashPrice}`,
+          `[${logTag}] -> [${currentId}] "${nameWithSim}" cash:${cashPrice}`,
         );
       }
 

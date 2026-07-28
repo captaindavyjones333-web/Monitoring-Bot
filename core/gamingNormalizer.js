@@ -19,12 +19,34 @@ export function normalizeGamingName(raw) {
   name = name.replace(/\bgame\s*pack\b/gi, "");
   name = name.replace(/\+\s*games?\b/gi, "");
   name = name.replace(/\+\s*fifa\s*\d*\b/gi, "");
-  name = name.replace(/\bmario\s*kart\s*world\s*(game)?\b/gi, "");
   name = name.replace(/\(eu\)/gi, "");
   name = name.replace(/\beu\b/gi, "");
   name = name.replace(/\bd\s*chassis\b/gi, "");
   name = name.replace(/\(slim\)/gi, "");
   name = name.replace(/\bբաժ\.?\s*քարտ\b/gi, "");
+
+  // ── Nintendo Switch: keep game bundles as distinct products, strip colors ──
+  if (/\bnintendo\s*switch\b/.test(name)) {
+    // Normalize game bundle names to canonical forms (these ARE distinct products)
+    name = name.replace(/\bmario\s*kart\s*world\b/gi, "mario kart world");
+    name = name.replace(/\bgame\b/gi, "");
+    // Strip colors (cosmetic only, not a different product)
+    name = name.replace(
+      /\b(black|white|grey|gray|red|blue|pink|green|yellow|neon|purple|coral|turquoise)\b/gi,
+      "",
+    );
+    name = name.replace(/[&]/g, " ");
+  }
+
+  // ── Xbox: strip colors, SSD, Digital Edition (incl. typos) ──
+  if (/\bxbox\b/.test(name)) {
+    name = name.replace(/\bdigital\s*ed(i?t)+ion\b/gi, "digital edition");
+    name = name.replace(/\bssd\b/gi, "");
+    name = name.replace(
+      /\b(black|white|grey|gray|red|blue|green|yellow|purple)\b/gi,
+      "",
+    );
+  }
 
   name = name
     .replace(/[(),+]/g, " ")

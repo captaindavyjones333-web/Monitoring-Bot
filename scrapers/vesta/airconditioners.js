@@ -40,12 +40,12 @@ function extractListingProducts($) {
 
     const installmentText = $item.find("p").filter((_, p) => $(p).text().includes("Ապառիկ")).first().text();
     const installmentMatch = installmentText.match(/([\d,]+)/);
-    const installment_price = installmentMatch ? parseInt(installmentMatch[1].replace(/,/g, ""), 10) : null;
+    // const installment_price = installmentMatch ? parseInt(installmentMatch[1].replace(/,/g, ""), 10) : null;
 
     products.push({
       name,
       cash_price,
-      installment_price,
+      installment_price: null,
       installation_price: 0, // vesta's standard installation is free
       source: "vesta",
       url: href,

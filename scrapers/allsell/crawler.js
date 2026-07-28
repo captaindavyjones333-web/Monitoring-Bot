@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { getSimSuffixFromText } from "../../core/simClassifier.js";
 
 const BASE_URL = "https://allsell.am";
 
@@ -9,6 +10,32 @@ const HEADERS = {
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "Accept-Language": "hy-AM,hy;q=0.9,en-US;q=0.8,en;q=0.7",
 };
+
+function extractSimFromTable($) {
+  let simText = null;
+
+  // 1. Primary check: Search td elements with data-th attribute (case-insensitive & supports Armenian)
+  $("td[data-th]").each((_, el) => {
+    const dataTh = ($(el).attr("data-th") || "").toLowerCase();
+    if (dataTh.includes("sim") || dataTh.includes("սիմ")) {
+      if (!simText) simText = $(el).text().trim();
+    }
+  });
+
+  // 2. Fallback check: Search header <th> text case-insensitively
+  if (!simText) {
+    $("th").each((_, el) => {
+      const label = $(el).text().trim().toLowerCase();
+      if (label.includes("sim") || label.includes("սիմ")) {
+        if (!simText) {
+          simText = $(el).closest("tr").find("td").text().trim();
+        }
+      }
+    });
+  }
+
+  return simText;
+}
 
 function normalizeStorageLabel(label) {
   return label
@@ -66,7 +93,7 @@ function normalizeSimLabel(label) {
     l.includes("esim + esim") ||
     l.includes("2 esim")
   )
-    return "eSim+eSim";
+    return "eSim"; // dual eSIM is treated the same as single eSIM
   if (l.includes("nano") || l.includes("/esim") || l.includes("+ esim"))
     return "Nano-Sim";
   if (/^e[\s-]?sim$/i.test(l.trim())) return "eSim";
@@ -85,8 +112,14 @@ function parseSimpleProduct(baseName, html, source) {
   const installment_price = installmentText
     ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
     : null;
+  const simText = extractSimFromTable($);
+  const simSuffix = getSimSuffixFromText(simText);
+  const finalName =
+    simSuffix && !baseName.toLowerCase().includes("sim")
+      ? `${baseName}${simSuffix}`
+      : baseName;
 
-  return { name: baseName, cash_price, installment_price, source };
+  return { name: finalName, cash_price, installment_price, source };
 }
 
 async function fetchProductVariants(baseName, url, logTag, opts = {}) {
@@ -94,6 +127,11 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
   try {
     const res = await axios.get(url, { headers: HEADERS, timeout: 10000 });
     const html = res.data;
+    const $ = cheerio.load(html);
+
+    // Extract SIM from HTML table specification as fallback
+    const tableSimText = extractSimFromTable($);
+    const tableSimSuffix = getSimSuffixFromText(tableSimText);
 
     const attrStart = html.indexOf('"attributes"');
     const optionStart = html.indexOf('"optionPrices"');
@@ -193,8 +231,14 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
             const installment_price =
               optionPrices[productId].creditPrice?.amount ?? null;
             if (!cash_price) continue;
+
+            const nameWithSim =
+              tableSimSuffix && !baseName.toLowerCase().includes("sim")
+                ? `${baseName} ${ramLabel}/${storageLabel}${tableSimSuffix}`
+                : `${baseName} ${ramLabel}/${storageLabel}`;
+
             results.push({
-              name: `${baseName} ${ramLabel}/${storageLabel}`,
+              name: nameWithSim,
               cash_price,
               installment_price,
               source: "allsell",
@@ -207,8 +251,14 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
           const installment_price =
             optionPrices[productId].creditPrice?.amount ?? null;
           if (!cash_price) continue;
+
+          const nameWithSim =
+            tableSimSuffix && !baseName.toLowerCase().includes("sim")
+              ? `${baseName} ${storageLabel}${tableSimSuffix}`
+              : `${baseName} ${storageLabel}`;
+
           results.push({
-            name: `${baseName} ${storageLabel}`,
+            name: nameWithSim,
             cash_price,
             installment_price,
             source: "allsell",

@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { getSimSuffixFromText } from "../../core/simClassifier.js";
 
 const BASE_URL = "https://www.yerevanmobile.am";
 
@@ -34,12 +35,8 @@ function extractListingProducts($) {
 }
 
 function normalizeSimLabel(label) {
-  const l = label.toLowerCase();
-  if (l.includes("nano") || l.includes("and/or") || l.includes("1 sim"))
-    return "Nano-Sim";
-  if (/^e[\s-]?sim$/i.test(l.trim())) return "eSim";
-  if (l.includes("dual") || l.includes("2")) return "Dual eSim";
-  return label;
+  const suffix = getSimSuffixFromText(label);
+  return suffix ? suffix.trim() : label;
 }
 
 function extractStaticSimLabel($) {
@@ -99,12 +96,7 @@ function buildStaticStorageSuffix($) {
 }
 
 function getStaticSimSuffix(simText) {
-  if (!simText) return "";
-  const s = simText.toLowerCase();
-  if (s.includes("esim") && s.includes("nano")) return " Nano-Sim";
-  if (s.includes("esim")) return " Dual eSim";
-  if (/nano[\s-]?sim\s*\+\s*nano[\s-]?sim/.test(s)) return " Dual-Sim";
-  return "";
+  return getSimSuffixFromText(simText);
 }
 
 function parseSimpleProduct(baseName, html, source) {
@@ -323,7 +315,8 @@ async function fetchProductVariants(baseName, url, logTag) {
 
 /**
  * Generic yerevanmobile category crawler.
- * @param {string} listUrlBase - category listing URL (without &p= page param)
+ * @param {string|string[]} listUrlBase - one listing URL or an array of listing URLs
+ *   (without &p= page param). Each URL is crawled across all its pages.
  * @param {string} logTag - short tag for logs, e.g. "ym-phones" or "ym-tablets"
  * @param {Array<{name:string,url:string}>} manualUrls - extra URLs to force-include
  */
@@ -332,32 +325,44 @@ export async function crawlYerevanMobileCategory(
   logTag,
   manualUrls = [],
 ) {
+  const listUrlBases = Array.isArray(listUrlBase) ? listUrlBase : [listUrlBase];
   const listingProducts = [];
-  let page = 1;
+  const seenProductUrls = new Set();
 
-  while (true) {
-    const pageUrl = page === 1 ? listUrlBase : `${listUrlBase}&p=${page}`;
-    const res = await axios.get(pageUrl, { headers: HEADERS });
-    const $ = cheerio.load(res.data);
+  for (const baseUrl of listUrlBases) {
+    let page = 1;
+    console.log(`[${logTag}] Crawling listing: ${baseUrl}`);
 
-    const pageProducts = extractListingProducts($);
-    console.log(`[${logTag}] Page ${page}: ${pageProducts.length} products`);
+    while (true) {
+      const pageUrl = page === 1 ? baseUrl : `${baseUrl}&p=${page}`;
+      const res = await axios.get(pageUrl, { headers: HEADERS });
+      const $ = cheerio.load(res.data);
 
-    if (pageProducts.length === 0) break;
+      const pageProducts = extractListingProducts($);
+      console.log(`[${logTag}] Page ${page}: ${pageProducts.length} products`);
 
-    listingProducts.push(...pageProducts);
+      if (pageProducts.length === 0) break;
 
-    const hasNextPage =
-      $("a.action.next").length > 0 && !$("a.action.next").hasClass("inactive");
+      for (const p of pageProducts) {
+        if (!seenProductUrls.has(p.url)) {
+          seenProductUrls.add(p.url);
+          listingProducts.push(p);
+        }
+      }
 
-    if (!hasNextPage) break;
+      const hasNextPage =
+        $("a.action.next").length > 0 && !$("a.action.next").hasClass("inactive");
 
-    page++;
-    await new Promise((r) => setTimeout(r, 500));
+      if (!hasNextPage) break;
+
+      page++;
+      await new Promise((r) => setTimeout(r, 500));
+    }
   }
 
   for (const manual of manualUrls) {
-    if (!listingProducts.find((p) => p.url === manual.url)) {
+    if (!seenProductUrls.has(manual.url)) {
+      seenProductUrls.add(manual.url);
       listingProducts.push(manual);
       console.log(`[${logTag}] Added manual: ${manual.name}`);
     }
