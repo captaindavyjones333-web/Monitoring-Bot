@@ -5,8 +5,13 @@ export function groupMacbooksByCode(products) {
 
   // First pass: extract codes directly from all products
   for (const product of products) {
-    const code = extractModelCode(product.name);
+    let code = extractModelCode(product.name);
     if (!code) continue;
+
+    // Hardcode fix: Allsell listed MHFH4 (256GB code) in title that specifies 512GB
+    if (code === "MHFH4" && /512\s*(GB|ԳԲ)/i.test(product.name)) {
+      code = "MHFJ4";
+    }
 
     if (!groups.has(code)) {
       groups.set(code, { normalized: code, code, sources: {} });

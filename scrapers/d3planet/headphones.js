@@ -73,10 +73,22 @@ async function fetchProductPrice(puppeteerPage, baseName, url) {
     const price = await getBasePagePrice(puppeteerPage);
     if (!price) return null;
 
+    let installment_price = null;
+    try {
+      const modalBtn = await puppeteerPage.$("#openLoanModal");
+      if (modalBtn) {
+        await modalBtn.click();
+        await new Promise((r) => setTimeout(r, 1000));
+        installment_price = await puppeteerPage.$eval("#loanPrice", (el) => parseFloat(el.value) || null).catch(() => null);
+      }
+    } catch {
+      installment_price = null;
+    }
+
     return {
       name: baseName,
       cash_price: price,
-      installment_price: null,
+      installment_price,
       source: "3dplanet",
     };
   } catch (err) {

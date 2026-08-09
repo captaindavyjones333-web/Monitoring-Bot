@@ -68,10 +68,21 @@ const SOURCE_ORDER_BY_CATEGORY = {
     "yerevanmobile",
     "mobilecentre",
     "allsell",
+    "3dplanet",
     "icentre",
     "ispace",
   ],
-  tvs: ["redstore", "yerevanmobile", "mobilecentre", "allsell"],
+  tvs: [
+    "redstore",
+    "yerevanmobile",
+    "mobilecentre",
+    "allsell",
+    "vesta",
+    "vega",
+    "zigzag",
+    "vlv",
+    "eldorado",
+  ],
   dyson: [
     "redstore",
     "yerevanmobile",
@@ -161,7 +172,15 @@ function parseStorageValue(label) {
   return m[2].toLowerCase() === "tb" ? num * 1024 : num;
 }
 
-const TIER_1_BRANDS = ["iphone", "samsung", "xiaomi", "redmi", "poco", "google", "pixel"];
+const TIER_1_BRANDS = [
+  "iphone",
+  "samsung",
+  "xiaomi",
+  "redmi",
+  "poco",
+  "google",
+  "pixel",
+];
 
 const TIER_1_PHONE_SOURCES = [
   "redstore",
@@ -220,10 +239,11 @@ export function buildComparisons(groups, category) {
     const displayName = firstRs.name
       .replace(/\b\d+\s*(?:gb|tb)\b/gi, "")
       .replace(
-        /\b(Midnight|Starlight|Blue|Black|White|Red|Green|Yellow|Purple|Pink|Gold|Silver|Titanium|Natural|Desert|Ultramarine|Teal|Coral|Graphite|Alpine|Storm|Clay|Lavender|Mint|Sage|Cosmic Orange|Deep Blue|Sierra Blue|Space Gray|Space Grey|Deep Purple|Product Red|Sky Blue|Desert Titanium|Black Titanium|White Titanium|Natural Titanium|Rose Gold|Mocha|Brown|Navy|Orange|Porcelain|Obsidian|Hazel|Snow|Chalk|Charcoal|Fog|Lemongrass|Indigo|Jade|Moonstone|Bay|Aloe|Peony|Wintergreen|Sorta Seafoam|Sorta Sunny|Shadow|Jetblack|Onyx|Cobalt|Marble|Amber|Peach|Lime|Emerald|Phantom|Crafted|Icy|Silver Shadow|Blue Shadow|White Shadow|Black Shadow|Violet Shadow|Peach Pink|Onyx Black|Cobalt Violet|Marble Gray|Marble Grey|Amber Yellow|Titanium Jetblack|Crafted Black|Icy Blue|Gray|Grey)\b/gi,
+        /\b(Midnight|Starlight|Blue|Black|White|Red|Green|Yellow|Purple|Pink|Blush|Brass|Gold|Silver|Titanium|Natural|Desert|Ultramarine|Teal|Coral|Graphite|Alpine|Storm|Clay|Lavender|Mint|Sage|Cosmic Orange|Deep Blue|Sierra Blue|Space Gray|Space Grey|Deep Purple|Product Red|Sky Blue|Desert Titanium|Black Titanium|White Titanium|Natural Titanium|Rose Gold|Mocha|Brown|Navy|Orange|Porcelain|Obsidian|Hazel|Snow|Chalk|Charcoal|Fog|Lemongrass|Indigo|Jade|Moonstone|Bay|Aloe|Peony|Wintergreen|Sorta Seafoam|Sorta Sunny|Shadow|Jetblack|Onyx|Cobalt|Marble|Amber|Peach|Lime|Emerald|Phantom|Crafted|Icy|Silver Shadow|Blue Shadow|White Shadow|Black Shadow|Violet Shadow|Peach Pink|Onyx Black|Cobalt Violet|Marble Gray|Marble Grey|Amber Yellow|Titanium Jetblack|Crafted Black|Icy Blue|Gray|Grey)\b/gi,
         "",
       )
       .replace(/\s+/g, " ")
+      .replace(/[\/\\,\-_\s]+$/, "")
       .trim();
 
     lines.push(`*${displayName}*`);
@@ -300,8 +320,13 @@ export function groupMacbooksByCode(products) {
 
   // First pass: extract codes directly from all products
   for (const product of products) {
-    const code = extractModelCode(product.name);
+    let code = extractModelCode(product.name);
     if (!code) continue;
+
+    // Hardcode fix: Allsell listed MHFH4 (256GB code) in title that specifies 512GB
+    if (code === "MHFH4" && /512\s*(GB|ԳԲ)/i.test(product.name)) {
+      code = "MHFJ4";
+    }
 
     if (!groups.has(code)) {
       groups.set(code, { normalized: code, code, sources: {} });
@@ -365,15 +390,15 @@ export function groupMacbooksByCode(products) {
  * ispace: "16 GB, 512 GB", mobilecentre: "512GB SSD", etc.
  */
 function extractStorageFromGroup(group) {
-  // Priority: yerevanmobile (cleanest), then any other non-redstore, then redstore
+  // Priority: redstore (now has RAM/Storage suffix), then yerevanmobile, ispace, mobilecentre, etc.
   const sourceOrder = [
+    "redstore",
     "yerevanmobile",
     "ispace",
     "mobilecentre",
     "3dplanet",
     "icentre",
     "allsell",
-    "redstore",
   ];
 
   for (const src of sourceOrder) {
@@ -381,6 +406,14 @@ function extractStorageFromGroup(group) {
     if (!entry) continue;
 
     const name = entry.name;
+
+    // Match pattern like "8GB/256GB" or "16GB/1TB" or "16GB / 512GB" or "/16GB/512GB/" or "/16GB RAM/1TB/"
+    const ramStorageMatch = name.match(
+      /\b(\d+\s*GB)\s*(?:RAM)?\s*[\/,]\s*([\d.]+\s*[GT]B)\b/i,
+    );
+    if (ramStorageMatch) {
+      return `${ramStorageMatch[1].replace(/\s+/g, "").toUpperCase()}/${ramStorageMatch[2].replace(/\s+/g, "").toUpperCase()}`;
+    }
 
     // Match patterns like "/16GB/512GB/" or "/16GB RAM/1TB/"
     const slashMatch = name.match(/\/\d+\s*GB\s*(?:RAM)?\/([\d.]+\s*[GT]B)\b/i);
@@ -394,10 +427,9 @@ function extractStorageFromGroup(group) {
     const ssdMatch = name.match(/([\d.]+\s*[GT]B)\s*SSD/i);
     if (ssdMatch) return ssdMatch[1].replace(/\s+/g, "").toUpperCase();
 
-    // Match patterns like "8GB/256GB" (without leading slash)
-    const ramStorageMatch = name.match(/\b\d+\s*GB\s*\/\s*([\d.]+\s*[GT]B)\b/i);
-    if (ramStorageMatch)
-      return ramStorageMatch[1].replace(/\s+/g, "").toUpperCase();
+    // Single storage match like "512GB" or "1TB"
+    const singleMatch = name.match(/\b([\d.]+\s*[GT]B)\b/i);
+    if (singleMatch) return singleMatch[1].replace(/\s+/g, "").toUpperCase();
   }
 
   return null;
@@ -406,7 +438,7 @@ function extractStorageFromGroup(group) {
 /**
  * Extract a "series key" from a macbook name.
  * e.g. "MacBook Air 13.6'' M5 MDHE4(Midnight)" → "MacBook Air 13.6'' M5"
- * This strips model code, color, parentheses, and trailing whitespace.
+ * This strips model code, color, parentheses, RAM/Storage, and trailing whitespace.
  */
 function getMacbookSeriesKey(name, code) {
   let cleaned = name;
@@ -430,110 +462,174 @@ function getMacbookSeriesKey(name, code) {
   // Remove color in parentheses and any remaining parenthesized text
   cleaned = cleaned.replace(/\(.*?\)/g, "");
   cleaned = cleaned.replace(/^Apple\s+/i, "");
+
+  // Remove RAM and Storage tokens (e.g. 8GB, 16GB, 24GB, 32GB, 64GB, 128GB, 256GB, 512GB, 1TB, 2TB, RAM, SSD)
+  cleaned = cleaned.replace(/\b\d+\s*(GB|TB)\b/gi, "");
+  cleaned = cleaned.replace(/\b(RAM|SSD)\b/gi, "");
+
   cleaned = cleaned.replace(/\s+/g, " ").trim();
   return cleaned;
 }
 
 export function buildMacbookComparisons(groups) {
   const sourceOrder = SOURCE_ORDER_BY_CATEGORY.macbooks;
+
+  // ── Step 1: build per-code records ──────────────────────────────────────
   const perCodeResults = [];
 
   for (const [key, group] of groups) {
     const rs = group.sources["redstore"];
-    if (!rs) continue; // Only alert for models that exist in RS
-
-    const anchorCash = rs.cash_price;
-    const anchorInstallment = rs.installment_price;
+    const anchorCash = rs ? rs.cash_price : undefined;
+    const anchorInstallment = rs ? rs.installment_price : undefined;
     const storage = extractStorageFromGroup(group);
-    const seriesKey = getMacbookSeriesKey(rs.name, group.code);
 
-    let hasAlert = false;
-    const lines = [];
-
-    // Sub-header with storage and model code
-    const storagePart = storage ? `${storage}` : "";
-    const codePart = group.code ? `[${group.code}]` : "";
-    const subHeader = [storagePart, codePart].filter(Boolean).join(" ");
-    if (subHeader) lines.push(`\n_${subHeader}_`);
-
-    const anchorSourceName = "redstore";
-
-    for (const source of sourceOrder) {
-      const entry = group.sources[source];
-      const label = SOURCE_LABELS[source];
-      if (!label) continue;
-
-      if (!entry) {
-        lines.push(`${label} - Առկա չէ`);
-        continue;
-      }
-
-      const isAnchor = source === anchorSourceName;
-      const priceStr = formatPricePair(
-        entry.cash_price,
-        entry.installment_price,
-        anchorCash,
-        anchorInstallment,
-        isAnchor,
-      );
-      lines.push(`${label} - ${priceStr}`);
-
-      if (!isAnchor) {
-        if (entry.cash_price) {
-          const flag = getFlag(anchorCash, entry.cash_price);
-          if (flag === "❗" || flag === "✅") hasAlert = true;
-        }
-        if (entry.installment_price) {
-          const flag = getFlag(
-            anchorInstallment ?? anchorCash,
-            entry.installment_price,
-          );
-          if (flag === "❗" || flag === "✅") hasAlert = true;
-        }
-      }
-    }
+    // Derive the series key from redstore's name when available, otherwise
+    // fall back to any other source's name for this code.
+    const sampleEntry = rs || Object.values(group.sources)[0];
+    if (!sampleEntry) continue;
+    const seriesKey = getMacbookSeriesKey(sampleEntry.name, group.code);
 
     const hasAnyCompetitor = sourceOrder.some(
       (source) => source !== "redstore" && group.sources[source],
     );
 
     perCodeResults.push({
-      key,
-      seriesKey,
-      storage,
-      hasAlert,
+      key, // model code e.g. "MDE04"
+      seriesKey, // e.g. "MacBook Pro 14.2\" M5"
+      storage, // e.g. "512GB"
+      anchorCash,
+      anchorInstallment,
+      hasRS: !!rs,
       hasAnyCompetitor,
-      rsCash: anchorCash,
-      lines,
+      group, // full group with sources
     });
   }
 
-  // Step 2: Group by series key and merge into combined messages
+  // ── Step 2: group by series, then by storage+rsCash bucket ───────────────
+  // Codes that share the same series + storage + RS price are color variants
+  // → show them merged under one sub-header with all codes combined.
+  const normalizeSeriesKeyForMatching = (key) =>
+    key
+      .toLowerCase()
+      .replace(/["'’‘“”]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
   const seriesMap = new Map();
   for (const item of perCodeResults) {
-    if (!seriesMap.has(item.seriesKey)) {
-      seriesMap.set(item.seriesKey, []);
-    }
-    seriesMap.get(item.seriesKey).push(item);
+    const matchKey = normalizeSeriesKeyForMatching(item.seriesKey);
+    if (!seriesMap.has(matchKey)) seriesMap.set(matchKey, []);
+    seriesMap.get(matchKey).push(item);
   }
 
   const results = [];
 
-  for (const [seriesKey, items] of seriesMap) {
-    items.sort((a, b) => (a.rsCash ?? 0) - (b.rsCash ?? 0));
+  for (const [, items] of seriesMap) {
+    const anchorItems = items.filter((i) => i.hasRS);
+    const orphanItems = items.filter((i) => !i.hasRS);
 
-    const hasAlert = items.some((item) => item.hasAlert);
-    const anyCompetitorAcrossItems = items.some(
-      (item) => item.hasAnyCompetitor,
-    );
-    const allLines = [`*${seriesKey}*`];
+    // Display title always comes from redstore's own text (falls back to
+    // any item's text if this series somehow has no redstore entry).
+    const seriesKey = (anchorItems[0] ?? items[0]).seriesKey;
 
-    for (const item of items) {
-      if (!item.hasAnyCompetitor) continue;
-      allLines.push(...item.lines);
+    // Sort by RS price ascending (cheapest storage tier first)
+    anchorItems.sort((a, b) => (a.anchorCash ?? 0) - (b.anchorCash ?? 0));
+
+    const buckets = new Map();
+    for (const item of anchorItems) {
+      const bucketKey = item.storage ?? "";
+      if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+      buckets.get(bucketKey).push(item);
     }
 
-    const finalHasAlert = hasAlert && anyCompetitorAcrossItems;
+    for (const orphan of orphanItems) {
+      const bucketKey = orphan.storage ?? "";
+      if (buckets.has(bucketKey)) {
+        buckets.get(bucketKey).push(orphan);
+      }
+    }
+
+    let seriesHasAlert = false;
+    let anyCompetitorAcrossSeries = false;
+    const allLines = [`*${seriesKey}*`];
+
+    for (const [, bucket] of buckets) {
+      // Aggregate: do any of these codes have a competitor?
+      const bucketHasCompetitor = bucket.some((i) => i.hasAnyCompetitor);
+      if (!bucketHasCompetitor) continue;
+
+      anyCompetitorAcrossSeries = true;
+
+      // Merged code label e.g. "[MDE04/MDE44]"
+      const codes = bucket.map((i) => i.key).join("/");
+      const storage = bucket[0].storage;
+      const subHeader = storage ? `${storage} [${codes}]` : `[${codes}]`;
+      allLines.push(`\n_${subHeader}_`);
+
+      // RS prices come from any one of the bucket items (they're the same price)
+      const anchorCash = bucket[0].anchorCash;
+      const anchorInstallment = bucket[0].anchorInstallment;
+
+      for (const source of sourceOrder) {
+        const label = SOURCE_LABELS[source];
+        if (!label) continue;
+
+        const isAnchor = source === "redstore";
+
+        if (isAnchor) {
+          // RS: just show its price (taken from first bucket item)
+          const priceStr = formatPricePair(
+            anchorCash,
+            anchorInstallment,
+            anchorCash,
+            anchorInstallment,
+            true,
+          );
+          allLines.push(`${label} - ${priceStr}`);
+          continue;
+        }
+
+        // Competitor: collect all entries across codes in this bucket,
+        // then pick the minimum cash price (= cheapest color available).
+        const competitorEntries = bucket
+          .map((i) => i.group.sources[source])
+          .filter(Boolean);
+
+        if (competitorEntries.length === 0) {
+          allLines.push(`${label} - Առկա չէ`);
+          continue;
+        }
+
+        // Pick entry with lowest cash_price
+        competitorEntries.sort(
+          (a, b) => (a.cash_price ?? Infinity) - (b.cash_price ?? Infinity),
+        );
+        const bestEntry = competitorEntries[0];
+
+        const priceStr = formatPricePair(
+          bestEntry.cash_price,
+          bestEntry.installment_price,
+          anchorCash,
+          anchorInstallment,
+          false,
+        );
+        allLines.push(`${label} - ${priceStr}`);
+
+        if (bestEntry.cash_price) {
+          const flag = getFlag(anchorCash, bestEntry.cash_price);
+          if (flag === "❗" || flag === "✅") seriesHasAlert = true;
+        }
+        if (bestEntry.installment_price) {
+          const flag = getFlag(
+            anchorInstallment ?? anchorCash,
+            bestEntry.installment_price,
+          );
+          if (flag === "❗" || flag === "✅") seriesHasAlert = true;
+        }
+      }
+    }
+
+    const finalHasAlert = seriesHasAlert && anyCompetitorAcrossSeries;
     results.push({
       key: seriesKey,
       hasAlert: finalHasAlert,
@@ -994,7 +1090,8 @@ function getPhoneGroupKey(message) {
 
   // 1. iPhones: Group by generation series (e.g. 13 series, 14 series, 15 series, 16 series, 17 series incl. Air)
   if (name.includes("iphone")) {
-    if (name.includes("iphone 17") || name.includes("iphone air")) return "0_iphone_17";
+    if (name.includes("iphone 17") || name.includes("iphone air"))
+      return "0_iphone_17";
     if (name.includes("iphone 16")) return "0_iphone_16";
     if (name.includes("iphone 15")) return "0_iphone_15";
     if (name.includes("iphone 14")) return "0_iphone_14";
@@ -1008,13 +1105,22 @@ function getPhoneGroupKey(message) {
   // 2. Samsung: S series in one message, Z series in one message, A series in one message
   if (name.includes("samsung") || name.includes("galaxy")) {
     if (name.includes("galaxy s")) return "1_samsung_s";
-    if (name.includes("galaxy z") || name.includes("fold") || name.includes("flip")) return "1_samsung_z";
+    if (
+      name.includes("galaxy z") ||
+      name.includes("fold") ||
+      name.includes("flip")
+    )
+      return "1_samsung_z";
     if (name.includes("galaxy a")) return "1_samsung_a";
     return "1_samsung_other";
   }
 
   // 3. Xiaomi: Poco series in one message, Redmi series in one message, Note series in one message, others in one message
-  if (name.includes("xiaomi") || name.includes("redmi") || name.includes("poco")) {
+  if (
+    name.includes("xiaomi") ||
+    name.includes("redmi") ||
+    name.includes("poco")
+  ) {
     if (name.includes("poco")) return "2_xiaomi_poco";
     if (name.includes("note")) return "2_xiaomi_note";
     if (name.includes("redmi")) return "2_xiaomi_redmi";
@@ -1027,7 +1133,19 @@ function getPhoneGroupKey(message) {
   }
 
   // 5. Other brands: One message per brand (Honor, OnePlus, Nothing, Asus, ZTE, etc.)
-  const brands = ["honor", "oneplus", "nothing", "asus", "zte", "sony", "huawei", "oppo", "realme", "motorola", "nokia"];
+  const brands = [
+    "honor",
+    "oneplus",
+    "nothing",
+    "asus",
+    "zte",
+    "sony",
+    "huawei",
+    "oppo",
+    "realme",
+    "motorola",
+    "nokia",
+  ];
   for (const b of brands) {
     if (name.includes(b)) return `4_brand_${b}`;
   }
@@ -1048,6 +1166,99 @@ function groupPhoneAlerts(phoneMessages) {
   let counter = 1;
 
   for (const [groupKey, msgs] of groups) {
+    if (msgs.length === 1) {
+      resultMessages.push(`${counter}. ${msgs[0]}`);
+    } else {
+      const combined = msgs.map((m) => m.trim()).join("\n\n");
+      resultMessages.push(`${counter}. ${combined}`);
+    }
+    counter++;
+  }
+
+  return resultMessages;
+}
+
+function getBrandGroupKey(category, message) {
+  const name = message.toLowerCase();
+
+  if (category === "watches") {
+    if (/apple/i.test(name)) return "apple";
+    if (/samsung|galaxy/i.test(name)) return "samsung";
+    if (/xiaomi/i.test(name)) return "xiaomi";
+    return "other";
+  }
+
+  if (category === "headphones") {
+    if (/airpods/i.test(name)) return "airpods";
+    if (/buds/i.test(name)) return "galaxy buds";
+    if (/marshall/i.test(name)) return "marshall";
+    return "other";
+  }
+
+  if (category === "tablets") {
+    if (/ipad/i.test(name)) return "ipad";
+    if (/samsung|galaxy/i.test(name)) return "samsung";
+    if (/xiaomi|redmi|poco/i.test(name)) return "xiaomi";
+    return "other";
+  }
+
+  if (category === "speakers") {
+    if (/jbl/i.test(name)) return "jbl";
+    if (/marshall/i.test(name)) return "marshall";
+    if (/harman/i.test(name)) return "harman kard";
+    return "other";
+  }
+
+  if (category === "gaming") {
+    if (/playstation|ps5|ps4/i.test(name)) return "playstation";
+    if (/nintendo|switch/i.test(name)) return "nintendo";
+    if (/xbox/i.test(name)) return "xbox";
+    if (/meta|quest|oculus/i.test(name)) return "meta";
+    return "other";
+  }
+
+  if (category === "dyson") {
+    return "dyson";
+  }
+
+  return message;
+}
+
+function groupCategoryAlertsByBrand(category, messages) {
+  const grouped = new Map();
+
+  for (const msg of messages) {
+    const key = getBrandGroupKey(category, msg);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(msg);
+  }
+
+  const order = {
+    watches: ["apple", "samsung", "xiaomi", "other"],
+    tablets: ["ipad", "samsung", "xiaomi", "other"],
+    headphones: ["airpods", "galaxy buds", "marshall", "other"],
+    speakers: ["jbl", "marshall", "harman kard", "other"],
+    gaming: ["playstation", "nintendo", "xbox", "meta", "other"],
+    dyson: ["dyson"],
+  }[category];
+
+  const sortedKeys = Array.from(grouped.keys()).sort((a, b) => {
+    if (!order) return a.localeCompare(b);
+    const ai = order.indexOf(a);
+    const bi = order.indexOf(b);
+    if (ai !== bi) {
+      if (ai >= 0 && bi >= 0) return ai - bi;
+      if (ai >= 0) return -1;
+      if (bi >= 0) return 1;
+    }
+    return a.localeCompare(b);
+  });
+
+  const resultMessages = [];
+  let counter = 1;
+
+  for (const key of sortedKeys) {
+    const msgs = grouped.get(key);
     if (msgs.length === 1) {
       resultMessages.push(`${counter}. ${msgs[0]}`);
     } else {
@@ -1087,14 +1298,14 @@ export function splitAlertsByCategory(comparisons) {
 
   return {
     phones: groupPhoneAlerts(buckets.phones),
-    tablets: buckets.tablets.map((msg, i) => `${i + 1}. ${msg}`),
-    watches: buckets.watches.map((msg, i) => `${i + 1}. ${msg}`),
-    headphones: buckets.headphones.map((msg, i) => `${i + 1}. ${msg}`),
+    tablets: groupCategoryAlertsByBrand("tablets", buckets.tablets),
+    watches: groupCategoryAlertsByBrand("watches", buckets.watches),
+    headphones: groupCategoryAlertsByBrand("headphones", buckets.headphones),
     macbooks: buckets.macbooks.map((msg, i) => `${i + 1}. ${msg}`),
-    speakers: buckets.speakers.map((msg, i) => `${i + 1}. ${msg}`),
+    speakers: groupCategoryAlertsByBrand("speakers", buckets.speakers),
     tvs: buckets.tvs.map((msg, i) => `${i + 1}. ${msg}`),
-    dyson: buckets.dyson.map((msg, i) => `${i + 1}. ${msg}`),
-    gaming: buckets.gaming.map((msg, i) => `${i + 1}. ${msg}`),
+    dyson: groupCategoryAlertsByBrand("dyson", buckets.dyson),
+    gaming: groupCategoryAlertsByBrand("gaming", buckets.gaming),
     airconditioners: buckets.airconditioners.map(
       (msg, i) => `${i + 1}. ${msg}`,
     ),

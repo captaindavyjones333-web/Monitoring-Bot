@@ -99,6 +99,30 @@ function getStaticSimSuffix(simText) {
   return getSimSuffixFromText(simText);
 }
 
+// Manufacture/announcement year lives in a plain spec table row:
+// <tr><td>Հայտարարության Տարին</td><td>2024</td></tr>
+// This is a different DOM shape than the li/.type_block spec list used
+// elsewhere on the page, so it needs its own extractor.
+function extractStaticYear($) {
+  let year = null;
+  $("tr").each((_, el) => {
+    const $tr = $(el);
+    const cells = $tr.find("td");
+    if (cells.length < 2) return;
+    const label = cells.eq(0).text().trim();
+    if (label === "Հայտարարության Տարին") {
+      const value = cells.eq(1).text().trim();
+      if (value) year = value;
+    }
+  });
+  return year;
+}
+
+function appendYearToVariants(variants, year) {
+  if (!year || !variants || variants.length === 0) return variants;
+  return variants.map((v) => ({ ...v, name: `${v.name} (${year})` }));
+}
+
 function parseSimpleProduct(baseName, html, source) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
@@ -113,7 +137,24 @@ function parseSimpleProduct(baseName, html, source) {
   return { name: baseName, cash_price, installment_price, source };
 }
 
-async function fetchProductVariants(baseName, url, logTag) {
+// For products with no swatch selector at all (single variant), the
+// title alone often omits storage (e.g. "128GB"). Pull it from the
+// static spec list li/.type_block ("Հիշողություն") the same way the
+// no-memory-swatch branch below already does, and append it to the name.
+function parseSimpleProductWithStaticStorage(baseName, html, $html) {
+  const simple = parseSimpleProduct(baseName, html, "yerevanmobile");
+  if (!simple) return null;
+
+  const suffix = buildStaticStorageSuffix($html);
+  return suffix ? { ...simple, name: `${baseName} ${suffix}` } : simple;
+}
+
+async function fetchProductVariants(
+  baseName,
+  url,
+  logTag,
+  { includeYear = false } = {},
+) {
   try {
     const res = await axios
       .get(url, {
@@ -125,14 +166,20 @@ async function fetchProductVariants(baseName, url, logTag) {
         throw new Error(`fetch failed: ${err.message}`);
       });
     const html = res.data;
+    const $html = cheerio.load(html);
+    const year = includeYear ? extractStaticYear($html) : null;
+
+    const finish = (variants) => appendYearToVariants(variants, year);
 
     const attrStart = html.indexOf('"attributes"');
     const optionStart = html.indexOf('"optionPrices"');
     const priceFormatStart = html.indexOf('"priceFormat"');
 
     if (attrStart === -1 || optionStart === -1 || priceFormatStart === -1) {
-      return [parseSimpleProduct(baseName, html, "yerevanmobile")].filter(
-        Boolean,
+      return finish(
+        [parseSimpleProductWithStaticStorage(baseName, html, $html)].filter(
+          Boolean,
+        ),
       );
     }
 
@@ -144,8 +191,10 @@ async function fetchProductVariants(baseName, url, logTag) {
         .replace(/,\s*$/, "");
       optionPrices = JSON.parse(jsonStr);
     } catch (e) {
-      return [parseSimpleProduct(baseName, html, "yerevanmobile")].filter(
-        Boolean,
+      return finish(
+        [parseSimpleProductWithStaticStorage(baseName, html, $html)].filter(
+          Boolean,
+        ),
       );
     }
 
@@ -169,13 +218,14 @@ async function fetchProductVariants(baseName, url, logTag) {
       jsonStr = jsonStr.slice(0, endIndex);
       attributes = JSON.parse(jsonStr);
     } catch (e) {
-      return [parseSimpleProduct(baseName, html, "yerevanmobile")].filter(
-        Boolean,
+      return finish(
+        [parseSimpleProductWithStaticStorage(baseName, html, $html)].filter(
+          Boolean,
+        ),
       );
     }
 
     const disabledProductIds = new Set();
-    const $html = cheerio.load(html);
     $html('.swatch-option[data-option-empty="true"]').each((_, el) => {
       const optionId = $html(el).attr("data-option-id");
       if (optionId) {
@@ -204,18 +254,18 @@ async function fetchProductVariants(baseName, url, logTag) {
         : "";
 
       const simple = parseSimpleProduct(baseName, html, "yerevanmobile");
-      if (!simple) return [];
+      if (!simple) return finish([]);
 
       if (staticSuffix) {
-        return [
+        return finish([
           {
             ...simple,
             name: `${baseName} ${staticSuffix}${staticSimSuffix}`,
           },
-        ];
+        ]);
       }
 
-      return [simple];
+      return finish([simple]);
     }
 
     const staticSimSuffix = !simAttr
@@ -299,14 +349,22 @@ async function fetchProductVariants(baseName, url, logTag) {
           });
         }
       }
-      return swatchResults.length > 0
-        ? swatchResults
-        : [parseSimpleProduct(baseName, html, "yerevanmobile")].filter(Boolean);
+      return finish(
+        swatchResults.length > 0
+          ? swatchResults
+          : [parseSimpleProduct(baseName, html, "yerevanmobile")].filter(
+              Boolean,
+            ),
+      );
     }
 
-    return results.length > 0
-      ? results
-      : [parseSimpleProduct(baseName, html, "yerevanmobile")].filter(Boolean);
+    return finish(
+      results.length > 0
+        ? results
+        : [parseSimpleProduct(baseName, html, "yerevanmobile")].filter(
+            Boolean,
+          ),
+    );
   } catch (err) {
     console.warn(`[${logTag}] Warning: ${url}: ${err.message}`);
     return [];
@@ -319,12 +377,18 @@ async function fetchProductVariants(baseName, url, logTag) {
  *   (without &p= page param). Each URL is crawled across all its pages.
  * @param {string} logTag - short tag for logs, e.g. "ym-phones" or "ym-tablets"
  * @param {Array<{name:string,url:string}>} manualUrls - extra URLs to force-include
+ * @param {{includeYear?: boolean}} options - includeYear: append the
+ *   "Հայտարարության Տարին" spec-table year to each variant's name, e.g.
+ *   "iPad 10 64GB (2024)". Off by default; turn on for categories (like
+ *   tablets) whose listing titles don't include the model year.
  */
 export async function crawlYerevanMobileCategory(
   listUrlBase,
   logTag,
   manualUrls = [],
+  options = {},
 ) {
+  const { includeYear = false } = options;
   const listUrlBases = Array.isArray(listUrlBase) ? listUrlBase : [listUrlBase];
   const listingProducts = [];
   const seenProductUrls = new Set();
@@ -374,7 +438,9 @@ export async function crawlYerevanMobileCategory(
     const { name, url } = listingProducts[i];
     console.log(`[${logTag}] (${i + 1}/${listingProducts.length}) ${name}`);
 
-    const variants = await fetchProductVariants(name, url, logTag);
+    const variants = await fetchProductVariants(name, url, logTag, {
+      includeYear,
+    });
     allProducts.push(...variants);
 
     await new Promise((r) => setTimeout(r, 300));

@@ -2,3 +2,4 @@
 /.env
 /cache
 /data/users.json
+/test

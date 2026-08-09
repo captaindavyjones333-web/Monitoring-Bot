@@ -15,6 +15,11 @@ function extractListingProducts($) {
   const products = [];
   $(".product-item-info").each((_, el) => {
     const $card = $(el);
+
+    // Skip non-product cards
+    const statusText = $card.find(".product_status").first().text().trim();
+    if (statusText.includes("Զանգահարել")) return;
+
     const name = (
       $card.find("img.product-image-photo").first().attr("alt") || ""
     )
@@ -40,7 +45,12 @@ function parseSimpleProduct(baseName, html) {
   const loanRaw = $("button.loan_price").first().attr("data-price");
   const installment_price = loanRaw ? Math.round(parseFloat(loanRaw)) : null;
 
-  return { name: baseName, cash_price, installment_price, source: "yerevanmobile" };
+  return {
+    name: baseName,
+    cash_price,
+    installment_price,
+    source: "yerevanmobile",
+  };
 }
 
 async function fetchProductPrice(baseName, url) {

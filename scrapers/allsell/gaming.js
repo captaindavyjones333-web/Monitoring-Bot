@@ -5,6 +5,7 @@ import { isConsoleProduct } from "../../core/gamingFilter.js";
 const BASE_URL = "https://allsell.am";
 const LIST_URLS = [
   "https://allsell.am/am/gaming-systems?cat=578&price=0-899900", // Meta
+  "https://allsell.am/am/catalogsearch/result/?q=meta+quest+",
   "https://allsell.am/am/gaming-systems?cat=205&price=0-899900", // Sony
   "https://allsell.am/am/gaming-systems?cat=206&price=0-899900", // Nintendo
   "https://allsell.am/am/gaming-systems?cat=208&price=0-899900", // Xbox
@@ -51,7 +52,9 @@ async function fetchCategoryProducts(categoryUrl) {
     const pageProducts = extractListingProducts($);
 
     if (pageProducts.length === 0) {
-      console.log(`[allsell-gaming] ${categoryUrl} page ${page}: 0 products, stopping`);
+      console.log(
+        `[allsell-gaming] ${categoryUrl} page ${page}: 0 products, stopping`,
+      );
       break;
     }
 
@@ -63,7 +66,9 @@ async function fetchCategoryProducts(categoryUrl) {
       }
     }
 
-    console.log(`[allsell-gaming] ${categoryUrl} page ${page}: ${pageProducts.length} products, ${newCount} new`);
+    console.log(
+      `[allsell-gaming] ${categoryUrl} page ${page}: ${pageProducts.length} products, ${newCount} new`,
+    );
 
     if (newCount === 0) {
       consecutiveNoNew++;
@@ -84,7 +89,9 @@ async function fetchCategoryProducts(categoryUrl) {
 
 function parseSimpleProduct(baseName, html) {
   const $ = cheerio.load(html);
-  const cashRaw = $("[data-price-type='finalPrice']").first().attr("data-price-amount");
+  const cashRaw = $("[data-price-type='finalPrice']")
+    .first()
+    .attr("data-price-amount");
   const cash_price = cashRaw ? parseInt(cashRaw, 10) : null;
   if (!cash_price) return null;
 
@@ -123,7 +130,9 @@ export async function scrapeAllsellGaming() {
   }
 
   const filtered = unique.filter((p) => isConsoleProduct(p.name));
-  console.log(`[allsell-gaming] ${filtered.length} after console-only filter (from ${unique.length})`);
+  console.log(
+    `[allsell-gaming] ${filtered.length} after console-only filter (from ${unique.length})`,
+  );
 
   const results = [];
   for (let i = 0; i < filtered.length; i++) {

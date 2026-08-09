@@ -1,3 +1,4 @@
+import puppeteer from "puppeteer";
 import axios from "axios";
 import * as cheerio from "cheerio";
 
@@ -9,8 +10,27 @@ const HEADERS = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
 };
 
-async function fetchListing() {
-  const res = await axios.get(LIST_URL, { headers: HEADERS });
+function buildPageUrl(listUrl, page) {
+  if (page === 1) return listUrl;
+  const sep = listUrl.includes("?") ? "&" : "?";
+  return `${listUrl}${sep}page=${page}`;
+}
+
+async function getTotalPages(listUrl) {
+  const res = await axios.get(listUrl, { headers: HEADERS });
+  const $ = cheerio.load(res.data);
+  let max = 1;
+  $("#paginationWrapper a[href]").each((_, el) => {
+    const href = $(el).attr("href") || "";
+    const match = href.match(/[?&]page=(\d+)/);
+    if (match) max = Math.max(max, parseInt(match[1], 10));
+  });
+  return max;
+}
+
+async function fetchListingPage(listUrl, page) {
+  const url = buildPageUrl(listUrl, page);
+  const res = await axios.get(url, { headers: HEADERS });
   const $ = cheerio.load(res.data);
 
   const products = [];
@@ -29,16 +49,55 @@ async function fetchListing() {
   return products;
 }
 
-async function fetchProductPrice(baseName, url) {
+async function fetchListing() {
+  const totalPages = await getTotalPages(LIST_URL);
+  console.log(`[3d-dyson] ${totalPages} pages`);
+
+  const listingProducts = [];
+  for (let page = 1; page <= totalPages; page++) {
+    const products = await fetchListingPage(LIST_URL, page);
+    console.log(`[3d-dyson] Page ${page}: ${products.length} products`);
+    listingProducts.push(...products);
+    await new Promise((r) => setTimeout(r, 300));
+  }
+
+  const seenUrls = new Set();
+  const unique = [];
+  for (const p of listingProducts) {
+    if (!seenUrls.has(p.url)) {
+      seenUrls.add(p.url);
+      unique.push(p);
+    }
+  }
+  return unique;
+}
+
+async function fetchProductPrice(puppeteerPage, baseName, url) {
   try {
-    const res = await axios.get(url, { headers: HEADERS, timeout: 15000 });
-    const $ = cheerio.load(res.data);
-    const raw = $("#price").attr("data-price") || $("#price").text();
-    const cleaned = raw ? raw.replace(/[^\d.]/g, "") : null;
-    const cash_price = cleaned ? parseFloat(cleaned) : null;
+    await puppeteerPage.goto(url, { waitUntil: "networkidle2", timeout: 20000 });
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const cash_price = await puppeteerPage.$eval("#price", (el) => {
+      const raw = el.getAttribute("data-price") || el.textContent;
+      const cleaned = raw ? raw.replace(/[^\d.]/g, "") : null;
+      return cleaned ? parseFloat(cleaned) : null;
+    }).catch(() => null);
+
     if (!cash_price) return null;
 
-    return { name: baseName, cash_price, installment_price: null, source: "3dplanet" };
+    let installment_price = null;
+    try {
+      const modalBtn = await puppeteerPage.$("#openLoanModal");
+      if (modalBtn) {
+        await modalBtn.click();
+        await new Promise((r) => setTimeout(r, 1000));
+        installment_price = await puppeteerPage.$eval("#loanPrice", (el) => parseFloat(el.value) || null).catch(() => null);
+      }
+    } catch {
+      installment_price = null;
+    }
+
+    return { name: baseName, cash_price, installment_price, source: "3dplanet" };
   } catch (err) {
     console.warn(`[3d-dyson] Failed ${url}: ${err.message}`);
     return null;
@@ -47,15 +106,36 @@ async function fetchProductPrice(baseName, url) {
 
 export async function scrape3DPlanetDyson() {
   const listingProducts = await fetchListing();
-  console.log(`[3d-dyson] ${listingProducts.length} products found`);
+  console.log(`[3d-dyson] ${listingProducts.length} unique products found`);
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--no-first-run",
+    ],
+  });
+  const puppeteerPage = await browser.newPage();
+  await puppeteerPage.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+  );
 
   const results = [];
-  for (let i = 0; i < listingProducts.length; i++) {
-    const { name, url } = listingProducts[i];
-    console.log(`[3d-dyson] (${i + 1}/${listingProducts.length}) ${name}`);
-    const product = await fetchProductPrice(name, url);
-    if (product) results.push(product);
-    await new Promise((r) => setTimeout(r, 300));
+  try {
+    for (let i = 0; i < listingProducts.length; i++) {
+      const { name, url } = listingProducts[i];
+      console.log(`[3d-dyson] (${i + 1}/${listingProducts.length}) ${name}`);
+      const product = await fetchProductPrice(puppeteerPage, name, url);
+      if (product) results.push(product);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  } finally {
+    await browser.close();
   }
 
   console.log(`[3d-dyson] Total: ${results.length}`);

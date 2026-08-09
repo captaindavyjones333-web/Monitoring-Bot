@@ -39,7 +39,11 @@ export const CATEGORY_CONFIG = {
   },
   macbooks: {
     label: "💻 Macbook",
-    brands: [],
+    brands: [
+      { label: "MacBook Neo", match: /macbook\s*neo/i },
+      { label: "MacBook Air", match: /macbook\s*air/i },
+      { label: "MacBook Pro", match: /macbook\s*pro/i },
+    ],
   },
   speakers: {
     label: "🔊 Խոսափողեր",

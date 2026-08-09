@@ -38,6 +38,10 @@ import { scrapeYerevanMobileTvs } from "../scrapers/yerevanmobile/tvs.js";
 import { scrapeMobileCentreTvs } from "../scrapers/mobilecentre/tvs.js";
 import { scrapeAllsellTvs } from "../scrapers/allsell/tvs.js";
 import { scrapeEldoradoTvs } from "../scrapers/eldorado/tvs.js";
+import { scrapeVestaTvs } from "../scrapers/vesta/tvs.js";
+import { scrapeVegaTvs } from "../scrapers/vega/tvs.js";
+import { scrapeZigzagTvs } from "../scrapers/zigzag/tvs.js";
+import { scrapeVlvTvs } from "../scrapers/vlv/tvs.js";
 import { scrapeRedstoreDyson } from "../scrapers/redstore/dyson.js";
 import { scrapeYerevanMobileDyson } from "../scrapers/yerevanmobile/dyson.js";
 import { scrapeMobileCentreDyson } from "../scrapers/mobilecentre/dyson.js";
@@ -182,6 +186,10 @@ export async function runTvsScraping() {
     scrapeCategoryIntoSource("redstore", "tvs", scrapeRedstoreTvs),
     scrapeCategoryIntoSource("yerevanmobile", "tvs", scrapeYerevanMobileTvs),
     scrapeCategoryIntoSource("allsell", "tvs", scrapeAllsellTvs),
+    scrapeCategoryIntoSource("vesta", "tvs", scrapeVestaTvs),
+    scrapeCategoryIntoSource("vega", "tvs", scrapeVegaTvs),
+    scrapeCategoryIntoSource("zigzag", "tvs", scrapeZigzagTvs),
+    scrapeCategoryIntoSource("vlv", "tvs", scrapeVlvTvs),
   ]);
 
   await Promise.allSettled([
@@ -329,6 +337,31 @@ export async function runPhonesScraping() {
   ]);
 
   console.log("[scrape] ✅ Phones-only scrape complete");
+}
+
+export async function runTabletsScraping() {
+  console.log("[scrape] 🔄 Starting tablets-only scrape...");
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "tablets", scrapeRedstoreTablets),
+    scrapeCategoryIntoSource(
+      "yerevanmobile",
+      "tablets",
+      scrapeYerevanMobileTablets,
+    ),
+    scrapeCategoryIntoSource("allsell", "tablets", scrapeAllsellTablets),
+  ]);
+
+  await Promise.allSettled([
+    scrapeCategoryIntoSource(
+      "mobilecentre",
+      "tablets",
+      scrapeMobileCentreTablets,
+    ),
+    scrapeCategoryIntoSource("3dplanet", "tablets", scrape3DPlanetTablets),
+  ]);
+
+  console.log("[scrape] ✅ Tablets-only scrape complete");
 }
 
 async function runScraperSequential(fns, source) {

@@ -11,6 +11,10 @@ const MANUAL_URLS = [
     name: "Apple iPhone 17",
     url: "https://www.yerevanmobile.am/am/apple-iphone-17.html",
   },
+  {
+    name: "Google Pixel 10",
+    url: "https://www.yerevanmobile.am/am/google-pixel-10.html"
+  }
 ];
 
 export async function scrapeYerevanMobilePhones() {

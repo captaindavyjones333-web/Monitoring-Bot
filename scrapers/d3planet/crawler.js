@@ -14,11 +14,10 @@ async function getTotalPages(listUrl) {
   const res = await axios.get(listUrl, { headers: HEADERS });
   const $ = cheerio.load(res.data);
   let max = 1;
-  $("a[href*='?page=']").each((_, el) => {
-    const match = $(el)
-      .attr("href")
-      ?.match(/page=(\d+)/);
-    if (match) max = Math.max(max, parseInt(match[1]));
+  $("#paginationWrapper a[href]").each((_, el) => {
+    const href = $(el).attr("href") || "";
+    const match = href.match(/[?&]page=(\d+)/);
+    if (match) max = Math.max(max, parseInt(match[1], 10));
   });
   return max;
 }
@@ -115,6 +114,53 @@ async function getStaticSim(puppeteerPage) {
   }
 }
 
+function isDiagonalLabel(label) {
+  return /^\d{1,2}(\.\d+)?["”]$/.test(label.trim());
+}
+
+async function clickButtonByLabel(puppeteerPage, selector, label) {
+  await puppeteerPage.evaluate(
+    (selector, label) => {
+      const btns = document.querySelectorAll(selector);
+      for (const btn of btns) {
+        if (btn.textContent.trim() === label) {
+          btn.click();
+          break;
+        }
+      }
+    },
+    selector,
+    label,
+  );
+}
+
+// Reads modifier buttons grouped by their section heading (e.g. "Ընտրել
+// Հիշողություն", "Ընտրել Էկրանի անկյունագիծ"), instead of one flat list —
+// so diagonal, RAM, and SIM options don't get mixed together.
+async function getModifierGroups(puppeteerPage) {
+  return puppeteerPage.evaluate(() => {
+    const groups = [];
+    document.querySelectorAll(".mt-4").forEach((div) => {
+      const h2 = div.querySelector("h2");
+      if (!h2) return;
+      const buttons = Array.from(
+        div.querySelectorAll("button.modifier-btn:not([disabled])"),
+      )
+        .filter((b) => !b.getAttribute("data-color"))
+        .map((b) => ({
+          label: b.textContent.trim(),
+          price: parseFloat(b.getAttribute("data-price")) || 0,
+          loanPrice: parseFloat(b.getAttribute("data-loanprice")) || 0,
+          selected: b.className.includes("bg-[#204ECF]"),
+        }));
+      if (buttons.length) {
+        groups.push({ heading: h2.textContent.trim(), buttons });
+      }
+    });
+    return groups;
+  });
+}
+
 async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
   try {
     await puppeteerPage.goto(url, {
@@ -143,11 +189,33 @@ async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
         )
         .catch(() => null);
       if (price) {
+        let loanPrice = await puppeteerPage
+          .$eval(
+            "button.storage-btn",
+            (el) => parseFloat(el.getAttribute("data-loanprice")) || null,
+          )
+          .catch(() => null);
+
+        if (!loanPrice) {
+          try {
+            const modalBtn = await puppeteerPage.$("#openLoanModal");
+            if (modalBtn) {
+              await modalBtn.click();
+              await new Promise((r) => setTimeout(r, 1000));
+              loanPrice = await puppeteerPage
+                .$eval("#loanPrice", (el) => parseFloat(el.value) || null)
+                .catch(() => null);
+            }
+          } catch {
+            loanPrice = null;
+          }
+        }
+
         return [
           {
             name: baseName,
             cash_price: price,
-            installment_price: null,
+            installment_price: loanPrice,
             source: "3dplanet",
           },
         ];
@@ -158,32 +226,96 @@ async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
     const results = [];
 
     for (const storage of storageButtons) {
-      await puppeteerPage.evaluate((label) => {
-        const btns = document.querySelectorAll(
-          "button.storage-btn:not([disabled])",
-        );
-        for (const btn of btns) {
-          if (btn.textContent.trim() === label) {
-            btn.click();
-            break;
-          }
-        }
-      }, storage.label);
-
+      await clickButtonByLabel(
+        puppeteerPage,
+        "button.storage-btn:not([disabled])",
+        storage.label,
+      );
       await new Promise((r) => setTimeout(r, 800));
 
-      const modifiers = await puppeteerPage.$$eval(
-        "button.modifier-btn:not([disabled])",
-        (els) =>
-          els
-            .filter((el) => !el.getAttribute("data-color"))
-            .map((el) => ({
-              label: el.textContent.trim(),
-              price: parseFloat(el.getAttribute("data-price")) || 0,
-              loanPrice: parseFloat(el.getAttribute("data-loanprice")) || 0,
-            }))
-            .filter((m) => m.label),
+      const groups = await getModifierGroups(puppeteerPage);
+      const diagonalGroup = groups.find((g) =>
+        g.heading.includes("անկյունագ"),
       );
+
+      if (diagonalGroup && diagonalGroup.buttons.length > 0) {
+        // Diagonal is its own dimension (iPad 11" vs 13"), and picking a
+        // storage option resets it back to whatever's default — so we
+        // click each diagonal option explicitly and re-read the DOM to
+        // confirm it actually stuck before trusting its price.
+        for (const diag of diagonalGroup.buttons) {
+          await clickButtonByLabel(
+            puppeteerPage,
+            "button.modifier-btn:not([disabled])",
+            diag.label,
+          );
+          await new Promise((r) => setTimeout(r, 600));
+
+          const confirmedGroups = await getModifierGroups(puppeteerPage);
+          const confirmedDiagonal = confirmedGroups
+            .find((g) => g.heading.includes("անկյունագ"))
+            ?.buttons.find((b) => b.label === diag.label);
+
+          if (!confirmedDiagonal?.selected) {
+            console.warn(
+              `[${logTag}] "${diag.label}" didn't stay selected for ${baseName} ${storage.label}, skipping`,
+            );
+            continue;
+          }
+
+          const otherButtons = confirmedGroups
+            .filter((g) => !g.heading.includes("անկյունագ"))
+            .flatMap((g) => g.buttons);
+
+          if (otherButtons.length === 0) {
+            results.push({
+              name: `${baseName} ${diag.label} ${storage.label}`
+                .replace(/\s+/g, " ")
+                .trim(),
+              cash_price: confirmedDiagonal.price || storage.price,
+              installment_price:
+                confirmedDiagonal.loanPrice || storage.loanPrice || null,
+              source: "3dplanet",
+            });
+            continue;
+          }
+
+          for (const mod of otherButtons) {
+            const isRam = /^\d+gb$/i.test(mod.label.trim());
+            const simType = normalizeSim(mod.label);
+
+            const cash_price =
+              mod.price || confirmedDiagonal.price || storage.price;
+            const installment_price =
+              mod.loanPrice ||
+              confirmedDiagonal.loanPrice ||
+              storage.loanPrice ||
+              null;
+
+            let name;
+            if (isRam) {
+              name = `${baseName} ${diag.label} ${mod.label.trim()}/${storage.label}`;
+            } else if (simType) {
+              name = `${baseName} ${diag.label} ${storage.label} (${getSimSuffix(mod.label.trim())})`;
+            } else {
+              name = `${baseName} ${diag.label} ${storage.label} ${mod.label.trim()}`;
+            }
+
+            results.push({
+              name: name.replace(/\s+/g, " ").trim(),
+              cash_price,
+              installment_price,
+              source: "3dplanet",
+            });
+          }
+        }
+        continue;
+      }
+
+      // No diagonal group on this product — original flat modifier logic.
+      const modifiers = groups
+        .filter((g) => !g.heading.includes("անկյունագ"))
+        .flatMap((g) => g.buttons);
 
       if (modifiers.length === 0) {
         const staticRam = await getStaticRam(puppeteerPage);
@@ -200,7 +332,7 @@ async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
         });
       } else {
         for (const mod of modifiers) {
-          const simType = normalizeSim(mod.label);
+          const simType = !isDiagonalLabel(mod.label) && normalizeSim(mod.label);
           const isRam = /^\d+gb$/i.test(mod.label.trim());
 
           const cash_price = mod.price || storage.price;
