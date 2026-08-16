@@ -2,7 +2,7 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 
 const BASE_URL = "https://www.yerevanmobile.am";
-const LIST_URL = `${BASE_URL}/en/electronics/watches.html?brands=171%2C11%2C12`;
+const LIST_URL = `${BASE_URL}/en/electronics/watches.html`;
 
 const HEADERS = {
   "User-Agent":
@@ -15,6 +15,11 @@ function extractListingProducts($) {
   const products = [];
   $(".product-item-info").each((_, el) => {
     const $card = $(el);
+
+    // Skip products that show "Զանգահարել" instead of a price/add-to-cart
+    const statusText = $card.find(".product_status").first().text().trim();
+    if (statusText.includes("Զանգահարել")) return;
+
     const name = (
       $card.find("img.product-image-photo").first().attr("alt") || ""
     )
@@ -29,7 +34,7 @@ function extractListingProducts($) {
   return products;
 }
 
-function parseSimpleProduct(baseName, html) {
+function parseSimpleProduct(baseName, html, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
     .first()
@@ -40,7 +45,13 @@ function parseSimpleProduct(baseName, html) {
   const loanRaw = $("button.loan_price").first().attr("data-price");
   const installment_price = loanRaw ? Math.round(parseFloat(loanRaw)) : null;
 
-  return { name: baseName, cash_price, installment_price, source: "yerevanmobile" };
+  return {
+    name: baseName,
+    cash_price,
+    installment_price,
+    source: "yerevanmobile",
+    url,
+  };
 }
 
 async function fetchWatchVariants(baseName, url) {
@@ -57,38 +68,44 @@ async function fetchWatchVariants(baseName, url) {
     const priceFormatStart = html.indexOf('"priceFormat"');
 
     if (attrStart === -1 || optionStart === -1 || priceFormatStart === -1) {
-      return [parseSimpleProduct(baseName, html)].filter(Boolean);
+      return [parseSimpleProduct(baseName, html, url)].filter(Boolean);
     }
 
     let optionPrices;
     try {
-      const chunk = html.slice(optionStart, priceFormatStart);
-      const jsonStr = chunk.replace(/^"optionPrices"\s*:\s*/, "").replace(/,\s*$/, "");
+      const optionChunk = html.slice(optionStart, priceFormatStart);
+      const jsonStr = optionChunk
+        .replace(/^"optionPrices"\s*:\s*/, "")
+        .replace(/,\s*$/, "");
       optionPrices = JSON.parse(jsonStr);
-    } catch {
-      return [parseSimpleProduct(baseName, html)].filter(Boolean);
+    } catch (e) {
+      return [parseSimpleProduct(baseName, html, url)].filter(Boolean);
     }
 
     let attributes;
     try {
       const attrChunk = html.slice(attrStart, optionStart);
       let jsonStr = attrChunk.replace(/^"attributes"\s*:\s*/, "");
-      let depth = 0, endIndex = 0;
+      let depth = 0,
+        endIndex = 0;
       for (let i = 0; i < jsonStr.length; i++) {
         if (jsonStr[i] === "{") depth++;
         else if (jsonStr[i] === "}") {
           depth--;
-          if (depth === 0) { endIndex = i + 1; break; }
+          if (depth === 0) {
+            endIndex = i + 1;
+            break;
+          }
         }
       }
       jsonStr = jsonStr.slice(0, endIndex);
       attributes = JSON.parse(jsonStr);
-    } catch {
-      return [parseSimpleProduct(baseName, html)].filter(Boolean);
+    } catch (e) {
+      return [parseSimpleProduct(baseName, html, url)].filter(Boolean);
     }
 
     const colorAttr = Object.values(attributes).find((a) => a.code === "color");
-    if (!colorAttr) return [parseSimpleProduct(baseName, html)].filter(Boolean);
+    if (!colorAttr) return [parseSimpleProduct(baseName, html, url)].filter(Boolean);
 
     const results = [];
     for (const colorOption of colorAttr.options) {
@@ -96,7 +113,8 @@ async function fetchWatchVariants(baseName, url) {
       if (!productId || !optionPrices[productId]) continue;
 
       const cash_price = optionPrices[productId].finalPrice?.amount ?? null;
-      const installment_price = optionPrices[productId].creditPrice?.amount ?? null;
+      const installment_price =
+        optionPrices[productId].creditPrice?.amount ?? null;
       if (!cash_price) continue;
 
       results.push({
@@ -104,12 +122,13 @@ async function fetchWatchVariants(baseName, url) {
         cash_price,
         installment_price,
         source: "yerevanmobile",
+        url,
       });
     }
 
     return results.length > 0
       ? results
-      : [parseSimpleProduct(baseName, html)].filter(Boolean);
+      : [parseSimpleProduct(baseName, html, url)].filter(Boolean);
   } catch (err) {
     console.warn(`[ym-watches] Warning: ${url}: ${err.message}`);
     return [];
@@ -121,7 +140,8 @@ export async function scrapeYerevanMobileWatches() {
   let page = 1;
 
   while (true) {
-    const pageUrl = page === 1 ? LIST_URL : `${LIST_URL}&p=${page}`;
+    const separator = LIST_URL.includes("?") ? "&" : "?";
+    const pageUrl = page === 1 ? LIST_URL : `${LIST_URL}${separator}p=${page}`;
     const res = await axios.get(pageUrl, { headers: HEADERS });
     const $ = cheerio.load(res.data);
     const pageProducts = extractListingProducts($);

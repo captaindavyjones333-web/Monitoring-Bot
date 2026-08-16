@@ -2,7 +2,7 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 
 const BASE_URL = "https://www.yerevanmobile.am";
-const LIST_URL = `${BASE_URL}/am/electronics/accessories/earphones.html?brands=171%2C11`;
+const LIST_URL = `${BASE_URL}/am/electronics/accessories/earphones.html`;
 const MARSHALL_SEARCH_URL = `${BASE_URL}/am/catalogsearch/result/index/?q=+marshall`;
 
 const HEADERS = {
@@ -16,6 +16,11 @@ function extractListingProducts($) {
   const products = [];
   $(".product-item-info").each((_, el) => {
     const $card = $(el);
+
+    // Skip products that show "Զանգահարել" instead of a price/add-to-cart
+    const statusText = $card.find(".product_status").first().text().trim();
+    if (statusText.includes("Զանգահարել")) return;
+
     const name = (
       $card.find("img.product-image-photo").first().attr("alt") || ""
     )
@@ -30,7 +35,7 @@ function extractListingProducts($) {
   return products;
 }
 
-function parseSimpleProduct(baseName, html) {
+function parseSimpleProduct(baseName, html, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
     .first()
@@ -41,7 +46,13 @@ function parseSimpleProduct(baseName, html) {
   const loanRaw = $("button.loan_price").first().attr("data-price");
   const installment_price = loanRaw ? Math.round(parseFloat(loanRaw)) : null;
 
-  return { name: baseName, cash_price, installment_price, source: "yerevanmobile" };
+  return {
+    name: baseName,
+    cash_price,
+    installment_price,
+    source: "yerevanmobile",
+    url,
+  };
 }
 
 async function fetchProductPrice(baseName, url) {
@@ -51,7 +62,7 @@ async function fetchProductPrice(baseName, url) {
       timeout: 15000,
       signal: AbortSignal.timeout(15000),
     });
-    return parseSimpleProduct(baseName, res.data);
+    return parseSimpleProduct(baseName, res.data, url);
   } catch (err) {
     console.warn(`[ym-headphones] Warning: ${url}: ${err.message}`);
     return null;
@@ -63,11 +74,14 @@ async function collectListing(listUrlBase) {
   let page = 1;
 
   while (true) {
-    const pageUrl = page === 1 ? listUrlBase : `${listUrlBase}&p=${page}`;
+    const separator = listUrlBase.includes("?") ? "&" : "?";
+    const pageUrl = page === 1 ? listUrlBase : `${listUrlBase}${separator}p=${page}`;
     const res = await axios.get(pageUrl, { headers: HEADERS });
     const $ = cheerio.load(res.data);
     const pageProducts = extractListingProducts($);
-    console.log(`[ym-headphones] Page ${page}: ${pageProducts.length} products`);
+    console.log(
+      `[ym-headphones] Page ${page}: ${pageProducts.length} products`,
+    );
     if (pageProducts.length === 0) break;
     listingProducts.push(...pageProducts);
 
@@ -90,7 +104,8 @@ export async function scrapeYerevanMobileHeadphones() {
   // accepted here since volume is low and redstore acts as the anchor
   // for alerts anyway (a wrongly-included speaker just won't match
   // anything and sits in its own single-source group, generating no alert).
-  const SPEAKER_HINTS = /\b(stanmore|acton|woburn|kilburn|emberton|tufton|middleton|willen|stockwell)\b/i;
+  const SPEAKER_HINTS =
+    /\b(stanmore|acton|woburn|kilburn|emberton|tufton|middleton|willen|stockwell)\b/i;
   const filteredMarshall = marshallListing.filter(
     (p) => !SPEAKER_HINTS.test(p.name),
   );

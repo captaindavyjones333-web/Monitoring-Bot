@@ -103,12 +103,6 @@ const SOURCE_ORDER_BY_CATEGORY = {
   airconditioners: ["redstore", "allsell", "eldorado", "vesta", "vlv"],
 };
 
-/**
- * True if at least one non-redstore source has a real entry in this
- * group's sources. Used as a final gate before treating any comparison
- * as alert-worthy — a group where every competitor is "Առկա չէ" must
- * never generate an alert, regardless of how hasAlert was computed.
- */
 function hasAnyCompetitorEntry(sources) {
   return Object.keys(sources).some(
     (source) => source !== "redstore" && sources[source],
@@ -117,9 +111,9 @@ function hasAnyCompetitorEntry(sources) {
 
 function getFlag(rsPrice, competitorPrice) {
   if (!rsPrice || !competitorPrice) return "";
-  const diff = rsPrice - competitorPrice;
-  if (diff > THRESHOLD_FLAT || diff > rsPrice * THRESHOLD_PERCENT) return "❗";
-  return "✅";
+  if (competitorPrice < rsPrice) return "‼️";
+  if (competitorPrice > rsPrice) return "♦️";
+  return "🏷";
 }
 
 function formatInstallation(installation) {
@@ -128,39 +122,68 @@ function formatInstallation(installation) {
   return `${installation.toLocaleString("ru-RU").replace(/,/g, " ")} ֏`;
 }
 
-function formatPricePair(cash, installment, rsCash, rsInstallment, isRedstore) {
-  const fmt = (n) => (n ? n.toLocaleString("ru-RU").replace(/,/g, " ") : "—");
-  const effectiveInstallment = installment ?? cash;
+function formatPricePair(cash, installment, rsCash, rsInstallment, isRedstore, sourcesGroup, sourceOrder) {
+  const fmt = (n, bold = false) => {
+    if (n === null || n === undefined) return "—";
+    const formatted = n.toLocaleString("ru-RU").replace(/,/g, " ");
+    return bold ? `*${formatted}*` : formatted;
+  };
+
+  // Always fall back installment to cash if not present or zero
+  const effectiveInstallment = installment || cash;
+  const effectiveRsInstallment = rsInstallment || rsCash;
 
   if (isRedstore) {
-    const parts = [fmt(cash)];
-    if (effectiveInstallment) parts.push(fmt(effectiveInstallment));
-    return parts.join(" - ");
+    const competitors = (sourceOrder || []).filter(
+      (s) => s !== "redstore" && sourcesGroup?.[s],
+    );
+
+    const cashIsAffordable =
+      competitors.length > 0 &&
+      competitors.every((s) => {
+        const compCash = sourcesGroup[s].cash_price;
+        return compCash && rsCash < compCash;
+      });
+
+    const instIsAffordable =
+      competitors.length > 0 &&
+      competitors.every((s) => {
+        const compEntry = sourcesGroup[s];
+        const compInst = compEntry.installment_price || compEntry.cash_price;
+        return compInst && effectiveRsInstallment < compInst;
+      });
+
+    const cashPart = cashIsAffordable ? `✅${fmt(cash)}` : fmt(cash);
+    const instPart = instIsAffordable
+      ? `${fmt(effectiveInstallment)}✅`
+      : fmt(effectiveInstallment);
+
+    return `${cashPart} - ${instPart}`;
   }
 
-  const rsEffectiveInstallment = rsInstallment ?? rsCash;
   const cashMatch = cash === rsCash;
-  const installmentMatch = effectiveInstallment === rsEffectiveInstallment;
-
-  if (cashMatch && installmentMatch) return "Արժեքները նույնն են";
+  const installmentMatch = effectiveInstallment === effectiveRsInstallment;
 
   const cashFlag = cash ? getFlag(rsCash, cash) : "";
   const instFlag = effectiveInstallment
-    ? getFlag(rsEffectiveInstallment, effectiveInstallment)
+    ? getFlag(effectiveRsInstallment, effectiveInstallment)
     : "";
+
+  const cashBold = cashFlag === "‼️";
+  const instBold = instFlag === "‼️";
 
   const cashStr = cash
     ? cashMatch
-      ? "Նույնն է"
-      : `${cashFlag}${fmt(cash)}`
+      ? "🏷"
+      : `${cashFlag}${fmt(cash, cashBold)}`
     : "—";
-  const instStr = effectiveInstallment
-    ? installmentMatch
-      ? "Նույնն է"
-      : `${instFlag}${fmt(effectiveInstallment)}`
-    : null;
 
-  return instStr ? `${cashStr} - ${instStr}` : cashStr;
+  // Always show installment (falling back to cash) — icon goes AFTER the price
+  const instStr = installmentMatch
+    ? "🏷"
+    : `${fmt(effectiveInstallment, instBold)}${instFlag}`;
+
+  return `${cashStr} - ${instStr}`;
 }
 
 // ─── Standard (name-based) comparison, used for phones/tablets/watches/headphones ──
@@ -269,7 +292,7 @@ export function buildComparisons(groups, category) {
         if (!label) continue;
 
         if (!entry) {
-          lines.push(`${label} - Առկա չէ`);
+          lines.push(`${label} - ❌`);
           continue;
         }
 
@@ -280,6 +303,8 @@ export function buildComparisons(groups, category) {
           rsCash,
           rsInstallment,
           isRS,
+          group.sources,
+          sourceOrder,
         );
         lines.push(`${label} - ${priceStr}`);
 
@@ -289,14 +314,14 @@ export function buildComparisons(groups, category) {
         if (!isRS) {
           if (entry.cash_price) {
             const flag = getFlag(rsCash, entry.cash_price);
-            if (flag === "❗" || flag === "✅") hasAlert = true;
+            if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
           }
           if (entry.installment_price) {
             const flag = getFlag(
               rsInstallment ?? rsCash,
               entry.installment_price,
             );
-            if (flag === "❗" || flag === "✅") hasAlert = true;
+            if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
           }
         }
       }
@@ -578,12 +603,24 @@ export function buildMacbookComparisons(groups) {
 
         if (isAnchor) {
           // RS: just show its price (taken from first bucket item)
+          // Build aggregated sources for the bucket across all items
+          const aggregatedSources = {};
+          for (const s of sourceOrder) {
+            const entries = bucket.map((i) => i.group.sources[s]).filter(Boolean);
+            if (entries.length > 0) {
+              entries.sort((a, b) => (a.cash_price ?? Infinity) - (b.cash_price ?? Infinity));
+              aggregatedSources[s] = entries[0];
+            }
+          }
+
           const priceStr = formatPricePair(
             anchorCash,
             anchorInstallment,
             anchorCash,
             anchorInstallment,
             true,
+            aggregatedSources,
+            sourceOrder,
           );
           allLines.push(`${label} - ${priceStr}`);
           continue;
@@ -596,7 +633,7 @@ export function buildMacbookComparisons(groups) {
           .filter(Boolean);
 
         if (competitorEntries.length === 0) {
-          allLines.push(`${label} - Առկա չէ`);
+          allLines.push(`${label} - ❌`);
           continue;
         }
 
@@ -617,14 +654,14 @@ export function buildMacbookComparisons(groups) {
 
         if (bestEntry.cash_price) {
           const flag = getFlag(anchorCash, bestEntry.cash_price);
-          if (flag === "❗" || flag === "✅") seriesHasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") seriesHasAlert = true;
         }
         if (bestEntry.installment_price) {
           const flag = getFlag(
             anchorInstallment ?? anchorCash,
             bestEntry.installment_price,
           );
-          if (flag === "❗" || flag === "✅") seriesHasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") seriesHasAlert = true;
         }
       }
     }
@@ -716,7 +753,7 @@ export function buildTvComparisons(groups) {
       if (!label) continue;
 
       if (!entry) {
-        lines.push(`${label} - Առկա չէ`);
+        lines.push(`${label} - ❌`);
         continue;
       }
 
@@ -727,20 +764,22 @@ export function buildTvComparisons(groups) {
         rsCash,
         rsInstallment,
         isRS,
+        group.sources,
+        sourceOrder,
       );
       lines.push(`${label} - ${priceStr}`);
 
       if (!isRS) {
         if (entry.cash_price) {
           const flag = getFlag(rsCash, entry.cash_price);
-          if (flag === "❗" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
         }
         if (entry.installment_price) {
           const flag = getFlag(
             rsInstallment ?? rsCash,
             entry.installment_price,
           );
-          if (flag === "❗" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
         }
       }
     }
@@ -808,7 +847,7 @@ export function buildDysonComparisons(groups) {
       if (!label) continue;
 
       if (!entry) {
-        lines.push(`${label} - Առկա չէ`);
+        lines.push(`${label} - ❌`);
         continue;
       }
 
@@ -819,20 +858,22 @@ export function buildDysonComparisons(groups) {
         rsCash,
         rsInstallment,
         isRS,
+        group.sources,
+        sourceOrder,
       );
       lines.push(`${label} - ${priceStr}`);
 
       if (!isRS) {
         if (entry.cash_price) {
           const flag = getFlag(rsCash, entry.cash_price);
-          if (flag === "❗" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
         }
         if (entry.installment_price) {
           const flag = getFlag(
             rsInstallment ?? rsCash,
             entry.installment_price,
           );
-          if (flag === "❗" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
         }
       }
     }
@@ -899,7 +940,7 @@ export function buildGamingComparisons(groups) {
       if (!label) continue;
 
       if (!entry) {
-        lines.push(`${label} - Առկա չէ`);
+        lines.push(`${label} - ❌`);
         continue;
       }
 
@@ -910,20 +951,22 @@ export function buildGamingComparisons(groups) {
         rsCash,
         rsInstallment,
         isRS,
+        group.sources,
+        sourceOrder,
       );
       lines.push(`${label} - ${priceStr}`);
 
       if (!isRS) {
         if (entry.cash_price) {
           const flag = getFlag(rsCash, entry.cash_price);
-          if (flag === "❗" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
         }
         if (entry.installment_price) {
           const flag = getFlag(
             rsInstallment ?? rsCash,
             entry.installment_price,
           );
-          if (flag === "❗" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
         }
       }
     }
@@ -991,7 +1034,7 @@ export function buildACComparisons(groups) {
       if (!label) continue;
 
       if (!entry) {
-        lines.push(`${label} - Առկա չէ`);
+        lines.push(`${label} - ❌`);
         continue;
       }
 
@@ -1002,6 +1045,8 @@ export function buildACComparisons(groups) {
         rsCash,
         rsInstallment,
         isRS,
+        group.sources,
+        sourceOrder,
       );
       lines.push(`${label} - ${priceStr}`);
 
@@ -1011,14 +1056,14 @@ export function buildACComparisons(groups) {
       if (!isRS) {
         if (entry.cash_price) {
           const flag = getFlag(rsCash, entry.cash_price);
-          if (flag === "❗" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
         }
         if (entry.installment_price) {
           const flag = getFlag(
             rsInstallment ?? rsCash,
             entry.installment_price,
           );
-          if (flag === "❗" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
         }
       }
     }

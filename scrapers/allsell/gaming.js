@@ -7,8 +7,10 @@ const LIST_URLS = [
   "https://allsell.am/am/gaming-systems?cat=578&price=0-899900", // Meta
   "https://allsell.am/am/catalogsearch/result/?q=meta+quest+",
   "https://allsell.am/am/gaming-systems?cat=205&price=0-899900", // Sony
+  "https://allsell.am/am/gaming-systems?mgs_brand=872&price=0-899900", // Sony VR2
   "https://allsell.am/am/gaming-systems?cat=206&price=0-899900", // Nintendo
   "https://allsell.am/am/gaming-systems?cat=208&price=0-899900", // Xbox
+  "https://allsell.am/am/gaming-systems?cat=579&price=0-899900" // Asus
 ];
 
 const HEADERS = {
@@ -87,7 +89,7 @@ async function fetchCategoryProducts(categoryUrl) {
   return [...seen.values()];
 }
 
-function parseSimpleProduct(baseName, html) {
+function parseSimpleProduct(baseName, html, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
     .first()
@@ -100,13 +102,13 @@ function parseSimpleProduct(baseName, html) {
     ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
     : null;
 
-  return { name: baseName, cash_price, installment_price, source: "allsell" };
+  return { name: baseName, cash_price, installment_price, source: "allsell", url };
 }
 
 async function fetchProductPrice(baseName, url) {
   try {
     const res = await axios.get(url, { headers: HEADERS, timeout: 10000 });
-    return parseSimpleProduct(baseName, res.data);
+    return parseSimpleProduct(baseName, res.data, url);
   } catch (err) {
     console.warn(`[allsell-gaming] Failed ${url}: ${err.message}`);
     return null;

@@ -90,6 +90,7 @@ async function fetchProductDetail(baseName, url, listingCashPrice) {
       cash_price,
       installment_price: null, // vega has no installment pricing
       source: "vega",
+      url,
     };
   } catch (err) {
     console.warn(`[vega-phones] Failed ${url}: ${err.message}`);

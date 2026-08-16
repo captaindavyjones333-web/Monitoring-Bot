@@ -20,13 +20,20 @@ async function extractProducts(page) {
     items.forEach((item) => {
       const nameEl = item.querySelector(".product_name");
       const name = nameEl?.textContent?.trim();
+      const href = nameEl?.getAttribute("href");
       if (!name) return;
 
       const priceEl = item.querySelector("[data-price-type='finalPrice']");
       const priceAmount = priceEl?.getAttribute("data-price-amount");
       if (!priceAmount) return;
 
-      results.push({ name, cash_price: parseInt(priceAmount, 10) });
+      const url = href
+        ? href.startsWith("http")
+          ? href
+          : `https://www.zigzag.am${href}`
+        : null;
+
+      results.push({ name, cash_price: parseInt(priceAmount, 10), url });
     });
 
     return results;
@@ -100,6 +107,7 @@ export async function scrapeZigzagDyson() {
             cash_price: p.cash_price,
             installment_price: null, // zigzag doesn't provide installment pricing
             source: "zigzag",
+            url: p.url,
           });
           newCount++;
         }

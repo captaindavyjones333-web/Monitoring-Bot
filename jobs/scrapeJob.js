@@ -428,6 +428,7 @@ export async function runScraping() {
     runScraper(
       [scrapeRedstorePhones, scrapeRedstoreTablets, scrapeRedstoreWatches],
       "redstore",
+      ["phones", "tablets", "watches"],
     ),
     runScraper(
       [
@@ -436,13 +437,15 @@ export async function runScraping() {
         scrapeYerevanMobileWatches,
       ],
       "yerevanmobile",
+      ["phones", "tablets", "watches"],
     ),
     runScraper(
       [scrapeAllsellPhones, scrapeAllsellTablets, scrapeAllsellWatches],
       "allsell",
+      ["phones", "tablets", "watches"],
     ),
-    runScraper([scrapeVegaPhones], "vega"),
-    runScraper([scrapeVlvPhones], "vlv"),
+    runScraper([scrapeVegaPhones], "vega", ["phones"]),
+    runScraper([scrapeVlvPhones], "vlv", ["phones"]),
   ]);
 
   console.log("[scrape] Group 2: Puppeteer scrapers (parallel)...");
@@ -454,12 +457,14 @@ export async function runScraping() {
         scrapeMobileCentreWatches,
       ],
       "mobilecentre",
+      ["phones", "tablets", "watches"],
     ),
     runScraper(
       [scrape3DPlanetPhones, scrape3DPlanetTablets, scrape3DPlanetWatches],
       "3dplanet",
+      ["phones", "tablets", "watches"],
     ),
-    runScraper([scrapeZigzagPhones], "zigzag"),
+    runScraper([scrapeZigzagPhones], "zigzag", ["phones"]),
   ]);
 
   console.log("[scrape] ✅ Scrape job complete");

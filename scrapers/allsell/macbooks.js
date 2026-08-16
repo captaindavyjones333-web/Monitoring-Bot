@@ -59,8 +59,8 @@ async function fetchListingPage(categoryUrl, page) {
 // axios HTML. For a genuinely simple (no-swatch) product, data-price-amount
 // on first load is correct (nothing has clicked/changed it yet), so this is
 // safe to use here even though we avoid it post-click for configurables.
-async function parseSimpleProductFromPage(baseName, page) {
-  return page.evaluate((baseName) => {
+async function parseSimpleProductFromPage(baseName, page, url = null) {
+  return page.evaluate((baseName, url) => {
     const priceEl = document.querySelector("[data-price-type='finalPrice']");
     const cashRaw = priceEl ? priceEl.getAttribute("data-price-amount") : null;
     const cash_price = cashRaw ? parseInt(cashRaw, 10) : null;
@@ -72,8 +72,8 @@ async function parseSimpleProductFromPage(baseName, page) {
       ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
       : null;
 
-    return { name: baseName, cash_price, installment_price, source: "allsell" };
-  }, baseName);
+    return { name: baseName, cash_price, installment_price, source: "allsell", url };
+  }, baseName, url);
 }
 
 /* ---------------------- configurable (swatch) products ---------------------- */
@@ -294,6 +294,7 @@ async function scrapeConfigurableProduct(page, baseName, url, attributes, validC
           cash_price,
           installment_price,
           source: "allsell",
+          url,
           _productId: productId, // internal only, stripped before returning
         });
       } catch (err) {
@@ -309,12 +310,11 @@ async function scrapeConfigurableProduct(page, baseName, url, attributes, validC
   // De-dupe by product id when we have it (reliable); fall back to name.
   const seen = new Set();
   const unique = [];
-  for (const r of results) {
-    const key = r._productId ?? r.name;
+  for (const item of results) {
+    const key = item._productId || item.name;
     if (!seen.has(key)) {
       seen.add(key);
-      // eslint-disable-next-line no-unused-vars
-      const { _productId, ...clean } = r;
+      const { _productId, ...clean } = item;
       unique.push(clean);
     }
   }
@@ -344,7 +344,7 @@ async function fetchProductVariants(browser, baseName, url) {
     const attributes = await extractSwatchAttributesFromPage(page);
 
     if (attributes.length === 0) {
-      const product = await parseSimpleProductFromPage(baseName, page);
+      const product = await parseSimpleProductFromPage(baseName, page, url);
       return product ? [product] : [];
     }
 

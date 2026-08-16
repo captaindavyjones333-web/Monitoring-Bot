@@ -8,6 +8,7 @@ const LIST_URLS = [
   "https://3dplanet.am/hy/store/gaming-consoles?brands[]=10&sort=none", // Sony
   "https://3dplanet.am/hy/store/gaming-consoles?brands[]=48&sort=none", // Nintendo
   "https://3dplanet.am/hy/store/gaming-consoles?brands[]=36&sort=none", // Xbox
+  "https://3dplanet.am/hy/store?search=steam+deck", // Steam Deck
 ];
 
 const HEADERS = {
@@ -28,7 +29,9 @@ async function fetchListing(listUrl) {
       .first()
       .attr("href");
     if (name && detailUrl) {
-      const fullUrl = detailUrl.startsWith("http") ? detailUrl : `${BASE_URL}${detailUrl}`;
+      const fullUrl = detailUrl.startsWith("http")
+        ? detailUrl
+        : `${BASE_URL}${detailUrl}`;
       products.push({ name, url: fullUrl });
     }
   });
@@ -37,14 +40,19 @@ async function fetchListing(listUrl) {
 
 async function fetchProductPrice(puppeteerPage, baseName, url) {
   try {
-    await puppeteerPage.goto(url, { waitUntil: "networkidle2", timeout: 20000 });
+    await puppeteerPage.goto(url, {
+      waitUntil: "networkidle2",
+      timeout: 20000,
+    });
     await new Promise((r) => setTimeout(r, 1500));
 
-    const cash_price = await puppeteerPage.$eval("#price", (el) => {
-      const raw = el.getAttribute("data-price") || el.textContent;
-      const cleaned = raw ? raw.replace(/[^\d.]/g, "") : null;
-      return cleaned ? parseFloat(cleaned) : null;
-    }).catch(() => null);
+    const cash_price = await puppeteerPage
+      .$eval("#price", (el) => {
+        const raw = el.getAttribute("data-price") || el.textContent;
+        const cleaned = raw ? raw.replace(/[^\d.]/g, "") : null;
+        return cleaned ? parseFloat(cleaned) : null;
+      })
+      .catch(() => null);
 
     if (!cash_price) return null;
 
@@ -54,13 +62,21 @@ async function fetchProductPrice(puppeteerPage, baseName, url) {
       if (modalBtn) {
         await modalBtn.click();
         await new Promise((r) => setTimeout(r, 1000));
-        installment_price = await puppeteerPage.$eval("#loanPrice", (el) => parseFloat(el.value) || null).catch(() => null);
+        installment_price = await puppeteerPage
+          .$eval("#loanPrice", (el) => parseFloat(el.value) || null)
+          .catch(() => null);
       }
     } catch {
       installment_price = null;
     }
 
-    return { name: baseName, cash_price, installment_price, source: "3dplanet" };
+    return {
+      name: baseName,
+      cash_price,
+      installment_price,
+      source: "3dplanet",
+      url,
+    };
   } catch (err) {
     console.warn(`[3d-gaming] Failed ${url}: ${err.message}`);
     return null;
@@ -77,7 +93,9 @@ export async function scrape3DPlanetGaming() {
   }
 
   const filtered = allListing.filter((p) => isConsoleProduct(p.name));
-  console.log(`[3d-gaming] ${filtered.length} after console-only filter (from ${allListing.length})`);
+  console.log(
+    `[3d-gaming] ${filtered.length} after console-only filter (from ${allListing.length})`,
+  );
 
   const browser = await puppeteer.launch({
     headless: true,

@@ -72,6 +72,7 @@ export const CATEGORY_CONFIG = {
       { label: "Nintendo", match: /nintendo|switch/i },
       { label: "Xbox", match: /xbox/i },
       { label: "Meta", match: /meta\s*quest/i },
+      { label: "Այլ", match: /^(?!.*(ps5|playstation|nintendo|switch|xbox|meta\s*quest)).+/i },
     ],
   },
   airconditioners: {

@@ -81,6 +81,7 @@ async function fetchProductPrice(puppeteerPage, baseName, url) {
       cash_price,
       installment_price,
       source: "3dplanet",
+      url,
     };
   } catch (err) {
     console.warn(`[3d-macbooks] Failed ${url}: ${err.message}`);

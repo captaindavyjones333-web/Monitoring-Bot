@@ -46,6 +46,21 @@ function extractSimText($) {
   return simText;
 }
 
+function extractChipset($) {
+  let chip = null;
+  $(".rowname").each((_, el) => {
+    const label = $(el).text().trim();
+    if (label === "Չիպսեթ") {
+      chip = $(el).next().text().trim();
+    }
+  });
+  if (!chip) return null;
+
+  // "Apple M2" -> "M2", also handles "M2 Pro" / "M3 Max" / "M4 Ultra"
+  const m = chip.match(/\bM\d+(?:\s*(?:Pro|Max|Ultra))?\b/i);
+  return m ? m[0].toUpperCase().replace(/\s+/g, " ") : null;
+}
+
 async function getAllProductUrls(page, listUrl, logTag) {
   await page.goto(listUrl, { waitUntil: "networkidle2", timeout: 30000 });
 
@@ -150,11 +165,18 @@ async function fetchVariants(
         continue;
       }
 
+      const chip = extractChipset($);
+      const nameWithChip =
+        chip && !fullName.toUpperCase().includes(chip.toUpperCase())
+          ? fullName.replace(/(\d+\s*gb)/i, `${chip} $1`)
+          : fullName;
+
       const ram = extractRam($);
       const nameWithRam =
-        ram && !fullName.toLowerCase().includes("gb/")
-          ? fullName.replace(/(\d+\s*gb)/i, `${ram}/$1`)
-          : fullName;
+        ram && !nameWithChip.toLowerCase().includes("gb/")
+          ? nameWithChip.replace(/(\d+\s*gb)/i, `${ram}/$1`)
+          : nameWithChip;
+
       const simText = extractSimText($);
       const simSuffix = getSimSuffixFromText(simText);
       const nameWithSim =
@@ -183,6 +205,7 @@ async function fetchVariants(
           cash_price: cashPrice,
           installment_price: installmentPrice,
           source: "mobilecentre",
+          url: currentUrl,
         });
         console.log(
           `[${logTag}] -> [${currentId}] "${nameWithSim}" cash:${cashPrice}`,

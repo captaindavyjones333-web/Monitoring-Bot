@@ -16,6 +16,7 @@ async function extractProducts(page) {
       const nameEl = item.querySelector(".product_name");
       const name = nameEl?.textContent?.trim();
       if (!name) return;
+      const url = nameEl?.href || null;
 
       const finalPriceEl = item.querySelector("[data-price-type='finalPrice']");
       const oldPriceEl = item.querySelector("[data-price-type='oldPrice']");
@@ -36,6 +37,7 @@ async function extractProducts(page) {
         cash_price,
         installment_price: null,
         source: "eldorado",
+        url,
       });
     });
 

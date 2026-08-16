@@ -1,13 +1,16 @@
+import "dotenv/config";
 import axios from "axios";
 
-const URL = "https://admin.redstore.am/api/v1/catalog/beauty-and-care/category";
+const URL = "https://admin.redstore.am/api/v1/export/catalog/beauty-and-care/category";
 
 async function fetchAllPages() {
   const all = [];
   let page = 1;
+  const headers = { "X-Export-Key": process.env.REDSTORE_EXPORT_KEY || "" };
 
   while (true) {
     const res = await axios.get(URL, {
+      headers,
       params: {
         view: "all",
         "brand_id[]": 479,
@@ -18,7 +21,8 @@ async function fetchAllPages() {
         lang: "hy",
       },
     });
-    const { last_page, data } = res.data.data.products;
+    const productsObj = res.data?.products || res.data?.data?.products;
+    const { last_page, data } = productsObj;
     all.push(...data);
     if (page >= last_page) break;
     page++;
@@ -34,6 +38,7 @@ function normalize(raw) {
     cash_price: Number(raw.cash_price) || null,
     installment_price: Number(raw.installment_price) || null,
     source: "redstore",
+    url: raw.slug ? `https://redstore.am/product/${raw.slug}` : null,
   };
 }
 

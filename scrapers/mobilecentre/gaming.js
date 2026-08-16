@@ -116,6 +116,7 @@ async function fetchProductDetail(page, listingName, url, listingCashPrice) {
       cash_price: cashPrice,
       installment_price: installmentPrice,
       source: "mobilecentre",
+      url,
     };
   } catch (err) {
     console.warn(`[mc-gaming] Failed ${url}: ${err.message}`);

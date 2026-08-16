@@ -217,6 +217,7 @@ async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
             cash_price: price,
             installment_price: loanPrice,
             source: "3dplanet",
+            url,
           },
         ];
       }
@@ -276,6 +277,7 @@ async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
               installment_price:
                 confirmedDiagonal.loanPrice || storage.loanPrice || null,
               source: "3dplanet",
+              url,
             });
             continue;
           }
@@ -306,6 +308,7 @@ async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
               cash_price,
               installment_price,
               source: "3dplanet",
+              url,
             });
           }
         }
@@ -329,6 +332,7 @@ async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
           cash_price: storage.price,
           installment_price: storage.loanPrice || null,
           source: "3dplanet",
+          url,
         });
       } else {
         for (const mod of modifiers) {
@@ -352,6 +356,7 @@ async function fetchProductVariants(puppeteerPage, baseName, url, logTag) {
             cash_price,
             installment_price,
             source: "3dplanet",
+            url,
           });
         }
       }

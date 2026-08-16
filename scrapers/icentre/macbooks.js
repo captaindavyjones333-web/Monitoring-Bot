@@ -23,6 +23,9 @@ function extractListingProducts($) {
     const name = $link.text().trim();
     if (!name) return;
 
+    const href = $link.attr("href");
+    const url = href ? (href.startsWith("http") ? href : `${BASE_URL}/${href.replace(/^\//, "")}`) : null;
+
     // The outer <tr> containing this product's info block; price sits
     // in the immediately-following sibling <tr>.
     const $outerTr = $link.closest("tr").parent().closest("tr");
@@ -49,6 +52,7 @@ function extractListingProducts($) {
       cash_price,
       installment_price: null,
       source: "icentre",
+      url,
     });
   });
 

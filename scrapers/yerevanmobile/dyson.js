@@ -15,6 +15,11 @@ function extractListingProducts($) {
   const products = [];
   $(".product-item-info").each((_, el) => {
     const $card = $(el);
+
+    // Skip products that show "Զանգահարել" instead of a price/add-to-cart
+    const statusText = $card.find(".product_status").first().text().trim();
+    if (statusText.includes("Զանգահարել")) return;
+
     const name = (
       $card.find("img.product-image-photo").first().attr("alt") || ""
     )
@@ -29,7 +34,7 @@ function extractListingProducts($) {
   return products;
 }
 
-function parseSimpleProduct(baseName, html) {
+function parseSimpleProduct(baseName, html, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
     .first()
@@ -40,7 +45,13 @@ function parseSimpleProduct(baseName, html) {
   const loanRaw = $("button.loan_price").first().attr("data-price");
   const installment_price = loanRaw ? Math.round(parseFloat(loanRaw)) : null;
 
-  return { name: baseName, cash_price, installment_price, source: "yerevanmobile" };
+  return {
+    name: baseName,
+    cash_price,
+    installment_price,
+    source: "yerevanmobile",
+    url,
+  };
 }
 
 async function fetchProductPrice(baseName, url) {
@@ -50,7 +61,7 @@ async function fetchProductPrice(baseName, url) {
       timeout: 15000,
       signal: AbortSignal.timeout(15000),
     });
-    return parseSimpleProduct(baseName, res.data);
+    return parseSimpleProduct(baseName, res.data, url);
   } catch (err) {
     console.warn(`[ym-dyson] Warning: ${url}: ${err.message}`);
     return null;

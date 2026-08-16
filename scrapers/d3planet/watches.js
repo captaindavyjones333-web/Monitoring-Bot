@@ -108,6 +108,7 @@ async function fetchWatchVariants(puppeteerPage, baseName, url) {
               cash_price: basePrice,
               installment_price: null,
               source: "3dplanet",
+              url,
             },
           ]
         : [];
@@ -151,6 +152,7 @@ async function fetchWatchVariants(puppeteerPage, baseName, url) {
           cash_price,
           installment_price,
           source: "3dplanet",
+          url,
         });
       }
     }

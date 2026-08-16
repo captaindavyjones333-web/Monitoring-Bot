@@ -4,6 +4,10 @@ export function normalizeGamingName(raw) {
   name = name.replace(/\bsony\b/gi, "");
   name = name.replace(/\bplaystation\b/gi, "ps");
   name = name.replace(/\bps\s*5\b/gi, "ps5"); // unify "ps 5" / "playstation 5" spacing
+  name = name.replace(/\bvalve\b/gi, ""); // Steam Deck's manufacturer — brand prefix noise, like "Sony"
+
+  // "PS VR2" or "PlayStation VR2" (no explicit "5") — all the same headset.
+  name = name.replace(/\bps5?\s*vr\s*2\b/gi, "ps vr2");
 
   // Strip storage capacity — not consistently reported across sites.
   name = name.replace(/\b\d+\s*(gb|tb)\b/gi, "");
@@ -81,6 +85,14 @@ export function normalizeGamingName(raw) {
       /\b(black|white|grey|gray|red|blue|green|yellow|purple)\b/gi,
       "",
     );
+  }
+
+  // ── Legion Go: unify chip name spelling/spacing, strip filler and specs ──
+  if (/\blegion\s*go\b/.test(name)) {
+    name = name.replace(/\bz1\s*extreem\b/gi, "z1extreme"); // fix typo
+    name = name.replace(/\bz1\s*extreme\b/gi, "z1extreme");
+    name = name.replace(/\bryzen\b/gi, ""); // implied by Z1 Extreme, redundant
+    name = name.replace(/\b\d+(\.\d+)?\s*ghz\b/gi, ""); // clock speed is a spec, not a SKU
   }
 
   name = name

@@ -97,7 +97,7 @@ async function fetchProductPrice(puppeteerPage, baseName, url) {
       installment_price = null;
     }
 
-    return { name: baseName, cash_price, installment_price, source: "3dplanet" };
+    return { name: baseName, cash_price, installment_price, source: "3dplanet", url };
   } catch (err) {
     console.warn(`[3d-dyson] Failed ${url}: ${err.message}`);
     return null;

@@ -1,9 +1,32 @@
 import "./errorHandler.js";
 import http from "http";
-import cron from "node-cron";
-import { runScraping } from "./jobs/scrapeJob.js";
-import { runSendJob, resetPreviousAlerts } from "./jobs/sendJob.js";
-import { sendAlerts } from "./bot/bot.js";
+import { bot } from "./bot/bot.js";
+import { startScheduler } from "./jobs/scheduler.js";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const USERS_FILE = path.resolve(__dirname, "./data/users.json");
+
+function getApprovedUserIds() {
+  const adminId = process.env.ADMIN_ID;
+  const userIds = new Set();
+  if (adminId) userIds.add(adminId);
+
+  if (fs.existsSync(USERS_FILE)) {
+    try {
+      const content = fs.readFileSync(USERS_FILE, "utf-8").trim();
+      if (content) {
+        const users = JSON.parse(content);
+        for (const [id, u] of Object.entries(users)) {
+          if (u?.approved) userIds.add(id);
+        }
+      }
+    } catch {}
+  }
+  return Array.from(userIds);
+}
 
 // ─── Keep-alive HTTP server for Render free tier ──────────────────────────────
 const PORT = process.env.PORT || 3000;
@@ -16,56 +39,9 @@ http
     console.log(`[server] 🌐 Listening on port ${PORT}`);
   });
 
-// ─── 06:00 AM — Scrape all sites ─────────────────────────────────────────────
-cron.schedule(
-  "0 6 * * *",
-  async () => {
-    console.log("[scheduler] ⏰ 06:00 — running scrape job");
-    resetPreviousAlerts();
-    await runScraping();
-  },
-  { timezone: "Asia/Yerevan" },
-);
+// ─── Start Cron Scheduler ──────────────────────────────────────────────────────
+startScheduler(bot, getApprovedUserIds);
 
-// ─── 09:00 AM — Send all alerts ──────────────────────────────────────────────
-// cron.schedule(
-//   "0 9 * * *",
-//   async () => {
-//     console.log("[scheduler] ⏰ 09:00 — sending all alerts");
-//     const alerts = await runSendJob(false, false);
-//     if (alerts.length === 0) {
-//       console.log("[scheduler] ✅ No alerts today");
-//       return;
-//     }
-//     console.log(`[scheduler] 📤 Sending ${alerts.length} alerts`);
-//     await sendAlerts(alerts);
-//   },
-//   { timezone: "Asia/Yerevan" },
-// );
+console.log("[bot] 🤖 Bot started. Scheduler initialized.");
+console.log("[bot] ⏰ Scheduled jobs: 06:00 (Full scrape) | 09:30 & 13:30 (Price Watch Diff)");
 
-// ─── Every hour 10:00–23:00 — Rescrape and send only new alerts ──────────────
-// cron.schedule(
-//   "0 10-23 * * *",
-//   async () => {
-//     const hour = new Date().toLocaleString("hy-AM", {
-//       timeZone: "Asia/Yerevan",
-//       hour: "numeric",
-//     });
-//     console.log(`[scheduler] ⏰ ${hour}:00 — hourly rescrape`);
-
-//     await runScraping();
-//     const newAlerts = await runSendJob(false, true);
-
-//     if (newAlerts.length === 0) {
-//       console.log("[scheduler] ✅ No new alerts this hour");
-//       return;
-//     }
-
-//     console.log(`[scheduler] 📤 Sending ${newAlerts.length} new alerts`);
-//     await sendAlerts(newAlerts);
-//   },
-//   { timezone: "Asia/Yerevan" },
-// );
-
-console.log("[bot] 🤖 Bot started. Waiting for scheduled jobs...");
-console.log("[bot] ⏰ Scrape: 06:00 | First send: 09:00 | Hourly: 10:00-23:00");

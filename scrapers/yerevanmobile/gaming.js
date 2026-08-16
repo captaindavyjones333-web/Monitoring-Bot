@@ -7,6 +7,8 @@ const LIST_URLS = [
   `${BASE_URL}/am/gaming-systems/nintendo.html`,
   `${BASE_URL}/am/gaming-systems/sony-playstation.html`,
   `${BASE_URL}/am/gaming-systems/virtual-glasses.html`,
+  `${BASE_URL}/am/valve-steam-deck-oled.html`,
+  `${BASE_URL}/am/catalogsearch/result/?q=lenovo+legion`,
 ];
 
 const HEADERS = {
@@ -20,6 +22,11 @@ function extractListingProducts($) {
   const products = [];
   $(".product-item-info").each((_, el) => {
     const $card = $(el);
+
+    // Skip products that show "Զանգահարել" instead of a price/add-to-cart
+    const statusText = $card.find(".product_status").first().text().trim();
+    if (statusText.includes("Զանգահարել")) return;
+
     const name = (
       $card.find("img.product-image-photo").first().attr("alt") || ""
     )
@@ -34,7 +41,7 @@ function extractListingProducts($) {
   return products;
 }
 
-function parseSimpleProduct(baseName, html) {
+function parseSimpleProduct(baseName, html, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
     .first()
@@ -45,7 +52,13 @@ function parseSimpleProduct(baseName, html) {
   const loanRaw = $("button.loan_price").first().attr("data-price");
   const installment_price = loanRaw ? Math.round(parseFloat(loanRaw)) : null;
 
-  return { name: baseName, cash_price, installment_price, source: "yerevanmobile" };
+  return {
+    name: baseName,
+    cash_price,
+    installment_price,
+    source: "yerevanmobile",
+    url,
+  };
 }
 
 async function fetchProductPrice(baseName, url) {
@@ -55,7 +68,7 @@ async function fetchProductPrice(baseName, url) {
       timeout: 15000,
       signal: AbortSignal.timeout(15000),
     });
-    return parseSimpleProduct(baseName, res.data);
+    return parseSimpleProduct(baseName, res.data, url);
   } catch (err) {
     console.warn(`[ym-gaming] Warning: ${url}: ${err.message}`);
     return null;
@@ -69,16 +82,22 @@ export async function scrapeYerevanMobileGaming() {
     let page = 1;
 
     while (true) {
-      const pageUrl = page === 1 ? listUrl : `${listUrl}${listUrl.includes("?") ? "&" : "?"}p=${page}`;
+      const pageUrl =
+        page === 1
+          ? listUrl
+          : `${listUrl}${listUrl.includes("?") ? "&" : "?"}p=${page}`;
       const res = await axios.get(pageUrl, { headers: HEADERS });
       const $ = cheerio.load(res.data);
       const pageProducts = extractListingProducts($);
-      console.log(`[ym-gaming] ${listUrl} page ${page}: ${pageProducts.length} products`);
+      console.log(
+        `[ym-gaming] ${listUrl} page ${page}: ${pageProducts.length} products`,
+      );
       if (pageProducts.length === 0) break;
       listingProducts.push(...pageProducts);
 
       const hasNextPage =
-        $("a.action.next").length > 0 && !$("a.action.next").hasClass("inactive");
+        $("a.action.next").length > 0 &&
+        !$("a.action.next").hasClass("inactive");
       if (!hasNextPage) break;
       page++;
       await new Promise((r) => setTimeout(r, 500));
@@ -86,7 +105,9 @@ export async function scrapeYerevanMobileGaming() {
   }
 
   const filtered = listingProducts.filter((p) => isConsoleProduct(p.name));
-  console.log(`[ym-gaming] ${filtered.length} after console-only filter (from ${listingProducts.length})`);
+  console.log(
+    `[ym-gaming] ${filtered.length} after console-only filter (from ${listingProducts.length})`,
+  );
 
   const results = [];
   for (let i = 0; i < filtered.length; i++) {

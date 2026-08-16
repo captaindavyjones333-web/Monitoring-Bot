@@ -22,7 +22,19 @@ function extractListingProducts($) {
       $card.find(".product-item-link").attr("href");
     if (!href) return;
     const url = href.startsWith("http") ? href : `${BASE_URL}${href}`;
-    products.push({ name, url });
+
+    // Scoped to this card only — avoids picking up another product's
+    // credit_price block when this markup also appears on detail pages.
+    const installmentText = $card
+      .find(".credit_price .price")
+      .first()
+      .text()
+      .trim();
+    const installment_price = installmentText
+      ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
+      : null;
+
+    products.push({ name, url, installment_price });
   });
   return products;
 }
@@ -35,24 +47,39 @@ async function fetchListingPage(page) {
   return extractListingProducts($);
 }
 
-function parseSimpleProduct(baseName, html) {
+function parseSimpleProduct(baseName, html, listingInstallment, url = null) {
   const $ = cheerio.load(html);
-  const cashRaw = $("[data-price-type='finalPrice']").first().attr("data-price-amount");
+  const $main = $(".product-info-main").first(); // scope to main product block
+
+  const cashRaw =
+    $main
+      .find("[data-price-type='finalPrice']")
+      .first()
+      .attr("data-price-amount") ||
+    $("[data-price-type='finalPrice']").first().attr("data-price-amount"); // fallback if not inside product-info-main
   const cash_price = cashRaw ? parseInt(cashRaw, 10) : null;
   if (!cash_price) return null;
 
-  const installmentText = $(".credit_price .price").first().text().trim();
-  const installment_price = installmentText
-    ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
-    : null;
+  let installment_price = null;
+  const installmentText = $main
+    .find(".credit_price .price")
+    .first()
+    .text()
+    .trim();
+  if (installmentText) {
+    installment_price =
+      parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null;
+  }
+  // Prefer the value scraped from the listing page if the detail page didn't yield one
+  if (installment_price == null) installment_price = listingInstallment ?? null;
 
-  return { name: baseName, cash_price, installment_price, source: "allsell" };
+  return { name: baseName, cash_price, installment_price, source: "allsell", url };
 }
 
-async function fetchProductPrice(baseName, url) {
+async function fetchProductPrice(baseName, url, listingInstallment) {
   try {
     const res = await axios.get(url, { headers: HEADERS, timeout: 10000 });
-    return parseSimpleProduct(baseName, res.data);
+    return parseSimpleProduct(baseName, res.data, listingInstallment, url);
   } catch (err) {
     console.warn(`[allsell-dyson] Failed ${url}: ${err.message}`);
     return null;
@@ -83,13 +110,19 @@ export async function scrapeAllsellDyson() {
     }
   }
 
-  console.log(`[allsell-dyson] ${unique.length} unique products, fetching details...`);
+  console.log(
+    `[allsell-dyson] ${unique.length} unique products, fetching details...`,
+  );
 
   const results = [];
   for (let i = 0; i < unique.length; i++) {
     const { name, url } = unique[i];
     console.log(`[allsell-dyson] (${i + 1}/${unique.length}) ${name}`);
-    const product = await fetchProductPrice(name, url);
+    const product = await fetchProductPrice(
+      name,
+      url,
+      unique[i].installment_price,
+    );
     if (product) results.push(product);
     await new Promise((r) => setTimeout(r, 300));
   }

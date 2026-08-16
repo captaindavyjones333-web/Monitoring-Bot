@@ -27,7 +27,6 @@ import dotenv from "dotenv";
 dotenv.config();
 const awaitingSearch = new Set();
 
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USERS_FILE = path.resolve(__dirname, "../data/users.json");
 
@@ -98,7 +97,10 @@ const MAIN_KEYBOARD = {
 
 const USER_KEYBOARD = {
   reply_markup: {
-    keyboard: [[{ text: "🔄 Լրիվ սկանավորում" }], ...CATEGORY_BUTTONS],
+    keyboard: [
+      [{ text: "🔄 Լրիվ սկանավորում" }],
+      ...CATEGORY_BUTTONS,
+    ],
     resize_keyboard: true,
     persistent: true,
   },

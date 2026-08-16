@@ -132,6 +132,7 @@ export async function scrapeZigzagTvs() {
       cash_price: p.cash_price,
       installment_price: null,
       source: "zigzag",
+      url: p.href ? (p.href.startsWith("http") ? p.href : `https://www.zigzag.am${p.href}`) : null,
     }));
 
     console.log(`[zigzag-tvs] Total: ${results.length}`);

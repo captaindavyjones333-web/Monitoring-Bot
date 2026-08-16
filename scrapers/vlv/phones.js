@@ -17,7 +17,9 @@ async function fetchAllPages() {
     all.push(...products);
 
     const lastPage = data.lastPage || data.last_page || 1;
-    console.log(`[vlv-phones] Page ${page}/${lastPage}: ${products.length} products`);
+    console.log(
+      `[vlv-phones] Page ${page}/${lastPage}: ${products.length} products`,
+    );
     if (page >= lastPage) break;
     page++;
   }
@@ -41,6 +43,7 @@ function normalize(raw) {
     cash_price: Number(raw.pricing?.selling_price) || null,
     installment_price: null, // vlv phones has no installment pricing
     source: "vlv",
+    url: `https://vlv.am/Product/${Number(raw.seller_id) || ""}`,
   };
 }
 

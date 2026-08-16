@@ -13,19 +13,25 @@ function normalize(raw) {
     cash_price: Number(raw.cash_price) || null,
     installment_price: Number(raw.installment_price) || null,
     source: "redstore",
+    url: raw.slug ? `https://redstore.am/product/${raw.slug}` : null,
   };
 }
 
 async function fetchMarshallHeadphones() {
   const results = [];
   let page = 1;
+  const headers = { "X-Export-Key": process.env.REDSTORE_EXPORT_KEY || "" };
 
   while (true) {
     const res = await axios.get(
-      "https://admin.redstore.am/api/v1/catalog/Marshall/search",
-      { params: { "category_id[]": 634, page, lang: "en" } },
+      "https://admin.redstore.am/api/v1/export/catalog/Marshall/search",
+      {
+        headers,
+        params: { "category_id[]": 634, page, lang: "en" },
+      },
     );
-    const { last_page, data } = res.data.data.products;
+    const productsObj = res.data?.products || res.data?.data?.products;
+    const { last_page, data } = productsObj;
     results.push(...data.map(normalize));
     if (page >= last_page) break;
     page++;

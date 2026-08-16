@@ -52,7 +52,7 @@ async function fetchListingPage(categoryUrl, page) {
   return { products, totalPages };
 }
 
-function parseSimpleProduct(baseName, html) {
+function parseSimpleProduct(baseName, html, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']").first().attr("data-price-amount");
   const cash_price = cashRaw ? parseInt(cashRaw, 10) : null;
@@ -63,7 +63,7 @@ function parseSimpleProduct(baseName, html) {
     ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
     : null;
 
-  return { name: baseName, cash_price, installment_price, source: "allsell" };
+  return { name: baseName, cash_price, installment_price, source: "allsell", url };
 }
 
 async function fetchWatchVariants(baseName, url) {
@@ -76,7 +76,7 @@ async function fetchWatchVariants(baseName, url) {
     const priceFormatStart = html.indexOf('"priceFormat"');
 
     if (attrStart === -1 || optionStart === -1 || priceFormatStart === -1) {
-      return [parseSimpleProduct(baseName, html)].filter(Boolean);
+      return [parseSimpleProduct(baseName, html, url)].filter(Boolean);
     }
 
     let optionPrices;
@@ -85,7 +85,7 @@ async function fetchWatchVariants(baseName, url) {
       const jsonStr = chunk.replace(/^"optionPrices"\s*:\s*/, "").replace(/,\s*$/, "");
       optionPrices = JSON.parse(jsonStr);
     } catch {
-      return [parseSimpleProduct(baseName, html)].filter(Boolean);
+      return [parseSimpleProduct(baseName, html, url)].filter(Boolean);
     }
 
     let attributes;
@@ -103,14 +103,14 @@ async function fetchWatchVariants(baseName, url) {
       jsonStr = jsonStr.slice(0, endIndex);
       attributes = JSON.parse(jsonStr);
     } catch {
-      return [parseSimpleProduct(baseName, html)].filter(Boolean);
+      return [parseSimpleProduct(baseName, html, url)].filter(Boolean);
     }
 
     const sizeAttr = Object.values(attributes).find((a) => a.code === "screen_diagonal");
     const colorAttr = Object.values(attributes).find((a) => a.code === "color");
 
     if (!sizeAttr && !colorAttr) {
-      return [parseSimpleProduct(baseName, html)].filter(Boolean);
+      return [parseSimpleProduct(baseName, html, url)].filter(Boolean);
     }
 
     const results = [];
@@ -148,13 +148,14 @@ async function fetchWatchVariants(baseName, url) {
           cash_price,
           installment_price,
           source: "allsell",
+          url,
         });
       }
     }
 
     return results.length > 0
       ? results
-      : [parseSimpleProduct(baseName, html)].filter(Boolean);
+      : [parseSimpleProduct(baseName, html, url)].filter(Boolean);
   } catch (err) {
     console.warn(`[allsell-watches] Failed ${url}: ${err.message}`);
     return [];

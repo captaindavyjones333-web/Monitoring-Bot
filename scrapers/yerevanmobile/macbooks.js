@@ -34,7 +34,7 @@ function extractListingProducts($) {
   return products;
 }
 
-function parseSimpleProduct(baseName, html) {
+function parseSimpleProduct(baseName, html, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
     .first()
@@ -50,6 +50,7 @@ function parseSimpleProduct(baseName, html) {
     cash_price,
     installment_price,
     source: "yerevanmobile",
+    url,
   };
 }
 
@@ -60,7 +61,7 @@ async function fetchProductPrice(baseName, url) {
       timeout: 15000,
       signal: AbortSignal.timeout(15000),
     });
-    return parseSimpleProduct(baseName, res.data);
+    return parseSimpleProduct(baseName, res.data, url);
   } catch (err) {
     console.warn(`[ym-macbooks] Warning: ${url}: ${err.message}`);
     return null;

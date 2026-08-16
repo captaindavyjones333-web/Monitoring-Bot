@@ -1,21 +1,27 @@
+import "dotenv/config";
 import axios from "axios";
 import { isConsoleProduct } from "../../core/gamingFilter.js";
 
-const URL = "https://admin.redstore.am/api/v1/catalog/game-consoles/category";
+const URL = "https://admin.redstore.am/api/v1/export/catalog/game-consoles/category";
 
 const BRAND_IDS = {
   sony: 303,
   brand_509: 509,
   brand_510: 510,
   brand_490: 490,
+  brand_306: 306,
+  brand_310: 310,
+  brand_299: 299,
 };
 
 async function fetchBrandPages(brandId) {
   const all = [];
   let page = 1;
+  const headers = { "X-Export-Key": process.env.REDSTORE_EXPORT_KEY || "" };
 
   while (true) {
     const res = await axios.get(URL, {
+      headers,
       params: {
         view: "all",
         "brand_id[]": brandId,
@@ -26,7 +32,8 @@ async function fetchBrandPages(brandId) {
         lang: "hy",
       },
     });
-    const { last_page, data } = res.data.data.products;
+    const productsObj = res.data?.products || res.data?.data?.products;
+    const { last_page, data } = productsObj;
     all.push(...data);
     if (page >= last_page) break;
     page++;
@@ -42,6 +49,7 @@ function normalize(raw) {
     cash_price: Number(raw.cash_price) || null,
     installment_price: Number(raw.installment_price) || null,
     source: "redstore",
+    url: raw.slug ? `https://redstore.am/product/${raw.slug}` : null,
   };
 }
 

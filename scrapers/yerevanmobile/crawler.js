@@ -17,6 +17,10 @@ function extractListingProducts($) {
   $(".product-item-info").each((_, el) => {
     const $card = $(el);
 
+    // Skip products that show "Զանգահարել" instead of a price/add-to-cart
+    const statusText = $card.find(".product_status").first().text().trim();
+    if (statusText.includes("Զանգահարել")) return;
+
     const name = (
       $card.find("img.product-image-photo").first().attr("alt") || ""
     )
@@ -123,7 +127,7 @@ function appendYearToVariants(variants, year) {
   return variants.map((v) => ({ ...v, name: `${v.name} (${year})` }));
 }
 
-function parseSimpleProduct(baseName, html, source) {
+function parseSimpleProduct(baseName, html, source, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
     .first()
@@ -134,15 +138,15 @@ function parseSimpleProduct(baseName, html, source) {
   const loanRaw = $("button.loan_price").first().attr("data-price");
   const installment_price = loanRaw ? Math.round(parseFloat(loanRaw)) : null;
 
-  return { name: baseName, cash_price, installment_price, source };
+  return { name: baseName, cash_price, installment_price, source, url };
 }
 
 // For products with no swatch selector at all (single variant), the
 // title alone often omits storage (e.g. "128GB"). Pull it from the
 // static spec list li/.type_block ("Հիշողություն") the same way the
 // no-memory-swatch branch below already does, and append it to the name.
-function parseSimpleProductWithStaticStorage(baseName, html, $html) {
-  const simple = parseSimpleProduct(baseName, html, "yerevanmobile");
+function parseSimpleProductWithStaticStorage(baseName, html, $html, url = null) {
+  const simple = parseSimpleProduct(baseName, html, "yerevanmobile", url);
   if (!simple) return null;
 
   const suffix = buildStaticStorageSuffix($html);
@@ -169,7 +173,11 @@ async function fetchProductVariants(
     const $html = cheerio.load(html);
     const year = includeYear ? extractStaticYear($html) : null;
 
-    const finish = (variants) => appendYearToVariants(variants, year);
+    const finish = (variants) =>
+      appendYearToVariants(
+        (variants || []).map((v) => ({ ...v, url })),
+        year,
+      );
 
     const attrStart = html.indexOf('"attributes"');
     const optionStart = html.indexOf('"optionPrices"');
@@ -177,7 +185,7 @@ async function fetchProductVariants(
 
     if (attrStart === -1 || optionStart === -1 || priceFormatStart === -1) {
       return finish(
-        [parseSimpleProductWithStaticStorage(baseName, html, $html)].filter(
+        [parseSimpleProductWithStaticStorage(baseName, html, $html, url)].filter(
           Boolean,
         ),
       );
@@ -192,7 +200,7 @@ async function fetchProductVariants(
       optionPrices = JSON.parse(jsonStr);
     } catch (e) {
       return finish(
-        [parseSimpleProductWithStaticStorage(baseName, html, $html)].filter(
+        [parseSimpleProductWithStaticStorage(baseName, html, $html, url)].filter(
           Boolean,
         ),
       );
@@ -219,7 +227,7 @@ async function fetchProductVariants(
       attributes = JSON.parse(jsonStr);
     } catch (e) {
       return finish(
-        [parseSimpleProductWithStaticStorage(baseName, html, $html)].filter(
+        [parseSimpleProductWithStaticStorage(baseName, html, $html, url)].filter(
           Boolean,
         ),
       );
@@ -253,7 +261,7 @@ async function fetchProductVariants(
         ? getStaticSimSuffix(extractStaticSimLabel($html))
         : "";
 
-      const simple = parseSimpleProduct(baseName, html, "yerevanmobile");
+      const simple = parseSimpleProduct(baseName, html, "yerevanmobile", url);
       if (!simple) return finish([]);
 
       if (staticSuffix) {
@@ -352,7 +360,7 @@ async function fetchProductVariants(
       return finish(
         swatchResults.length > 0
           ? swatchResults
-          : [parseSimpleProduct(baseName, html, "yerevanmobile")].filter(
+          : [parseSimpleProduct(baseName, html, "yerevanmobile", url)].filter(
               Boolean,
             ),
       );
@@ -361,9 +369,7 @@ async function fetchProductVariants(
     return finish(
       results.length > 0
         ? results
-        : [parseSimpleProduct(baseName, html, "yerevanmobile")].filter(
-            Boolean,
-          ),
+        : [parseSimpleProduct(baseName, html, "yerevanmobile", url)].filter(Boolean),
     );
   } catch (err) {
     console.warn(`[${logTag}] Warning: ${url}: ${err.message}`);
@@ -398,7 +404,8 @@ export async function crawlYerevanMobileCategory(
     console.log(`[${logTag}] Crawling listing: ${baseUrl}`);
 
     while (true) {
-      const pageUrl = page === 1 ? baseUrl : `${baseUrl}&p=${page}`;
+      const separator = baseUrl.includes("?") ? "&" : "?";
+      const pageUrl = page === 1 ? baseUrl : `${baseUrl}${separator}p=${page}`;
       const res = await axios.get(pageUrl, { headers: HEADERS });
       const $ = cheerio.load(res.data);
 
@@ -415,7 +422,8 @@ export async function crawlYerevanMobileCategory(
       }
 
       const hasNextPage =
-        $("a.action.next").length > 0 && !$("a.action.next").hasClass("inactive");
+        $("a.action.next").length > 0 &&
+        !$("a.action.next").hasClass("inactive");
 
       if (!hasNextPage) break;
 

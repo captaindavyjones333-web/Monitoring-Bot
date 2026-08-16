@@ -1,28 +1,37 @@
+import "dotenv/config";
 import axios from "axios";
 
 /**
- * Fetch every page of a single brand within a given category.
+ * Fetch every page of a single brand within a given category using the Redstore Export API.
  * @param {string} categoryEndpoint - e.g. "smartphones" or "tablets"
  * @param {number} brandId
+ * @param {object} [extraParams] - optional extra query params merged into every request (e.g. { lang: "en" }) — opt-in per category, not applied globally.
  * @returns {Promise<Array>} raw product objects from the API
  */
-export async function fetchBrandProducts(categoryEndpoint, brandId) {
-  const baseUrl = `https://admin.redstore.am/api/v1/catalog/${categoryEndpoint}/category`;
+export async function fetchBrandProducts(categoryEndpoint, brandId, extraParams = {}) {
+  const baseUrl = `https://admin.redstore.am/api/v1/export/catalog/${categoryEndpoint}/category`;
+  const headers = { "X-Export-Key": process.env.REDSTORE_EXPORT_KEY || "" };
 
   const firstRes = await axios.get(baseUrl, {
-    params: { view: "all", "brand_id[]": brandId, page: 1 },
+    params: { view: "all", "brand_id[]": brandId, page: 1, ...extraParams },
+    headers,
   });
 
-  const { last_page, data: firstPage } = firstRes.data.data.products;
-  if (last_page === 1) return firstPage;
+  const productsObj = firstRes.data?.products || firstRes.data?.data?.products;
+  const { last_page, data: firstPage } = productsObj;
+  if (!last_page || last_page === 1) return firstPage || [];
 
   const rest = await Promise.all(
     Array.from({ length: last_page - 1 }, (_, i) =>
       axios
         .get(baseUrl, {
-          params: { view: "all", "brand_id[]": brandId, page: i + 2 },
+          params: { view: "all", "brand_id[]": brandId, page: i + 2, ...extraParams },
+          headers,
         })
-        .then((r) => r.data.data.products.data),
+        .then((r) => {
+          const pObj = r.data?.products || r.data?.data?.products;
+          return pObj?.data || [];
+        }),
     ),
   );
 
@@ -35,14 +44,15 @@ export async function fetchBrandProducts(categoryEndpoint, brandId) {
  * @param {string} categoryEndpoint
  * @param {Record<string, number>} brandIds
  * @param {(raw: object) => object} normalize
+ * @param {object} [extraParams] - optional extra query params, see fetchBrandProducts
  * @returns {Promise<Array>} normalized product objects
  */
-export async function fetchAllBrands(categoryEndpoint, brandIds, normalize) {
+export async function fetchAllBrands(categoryEndpoint, brandIds, normalize, extraParams = {}) {
   const results = [];
 
   for (const [brand, id] of Object.entries(brandIds)) {
     try {
-      const products = await fetchBrandProducts(categoryEndpoint, id);
+      const products = await fetchBrandProducts(categoryEndpoint, id, extraParams);
       const normalized = products
         .map((raw) => {
           try {

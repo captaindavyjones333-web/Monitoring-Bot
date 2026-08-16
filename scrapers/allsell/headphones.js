@@ -52,7 +52,7 @@ async function fetchListingPage(categoryUrl, page) {
   return { products, totalPages };
 }
 
-function parseSimpleProduct(baseName, html) {
+function parseSimpleProduct(baseName, html, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']").first().attr("data-price-amount");
   const cash_price = cashRaw ? parseInt(cashRaw, 10) : null;
@@ -63,13 +63,13 @@ function parseSimpleProduct(baseName, html) {
     ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
     : null;
 
-  return { name: baseName, cash_price, installment_price, source: "allsell" };
+  return { name: baseName, cash_price, installment_price, source: "allsell", url };
 }
 
 async function fetchProductPrice(baseName, url) {
   try {
     const res = await axios.get(url, { headers: HEADERS, timeout: 10000 });
-    return parseSimpleProduct(baseName, res.data);
+    return parseSimpleProduct(baseName, res.data, url);
   } catch (err) {
     console.warn(`[allsell-headphones] Failed ${url}: ${err.message}`);
     return null;

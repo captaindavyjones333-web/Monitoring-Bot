@@ -17,7 +17,9 @@ async function fetchAllPages() {
     all.push(...products);
 
     const lastPage = data.lastPage || data.last_page || 1;
-    console.log(`[vlv-ac] Page ${page}/${lastPage}: ${products.length} products`);
+    console.log(
+      `[vlv-ac] Page ${page}/${lastPage}: ${products.length} products`,
+    );
     if (page >= lastPage) break;
     page++;
   }
@@ -32,6 +34,7 @@ function normalize(raw) {
     installment_price: null,
     installation_price: Number(raw.pricing?.installing_price) || null,
     source: "vlv",
+    url: `https://vlv.am/Product/${Number(raw.seller_id) || ""}`,
   };
 }
 

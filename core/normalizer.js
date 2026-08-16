@@ -737,13 +737,13 @@ function getBaseKey(key) {
 }
 
 function resolveIpadGroupKey(key, groups, currentPrice) {
-  const base = getIpadBaseKey(key);
+  const base = getIpadBaseKey(getMatchKey(key));
   const explicitConnectivity = getIpadConnectivityToken(key) ?? "wifi";
   const explicitYear = getIpadYearToken(key);
 
   const candidates = [];
   for (const [candidateKey, group] of groups) {
-    const candidateBase = getIpadBaseKey(candidateKey);
+    const candidateBase = getIpadBaseKey(getMatchKey(candidateKey));
     if (candidateBase !== base) continue;
 
     const candidateConnectivity =

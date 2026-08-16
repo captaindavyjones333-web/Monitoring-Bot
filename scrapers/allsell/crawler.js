@@ -100,7 +100,7 @@ function normalizeSimLabel(label) {
   return label;
 }
 
-function parseSimpleProduct(baseName, html, source) {
+function parseSimpleProduct(baseName, html, source, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
     .first()
@@ -119,7 +119,7 @@ function parseSimpleProduct(baseName, html, source) {
       ? `${baseName}${simSuffix}`
       : baseName;
 
-  return { name: finalName, cash_price, installment_price, source };
+  return { name: finalName, cash_price, installment_price, source, url };
 }
 
 async function fetchProductVariants(baseName, url, logTag, opts = {}) {
@@ -138,7 +138,7 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
     const priceFormatStart = html.indexOf('"priceFormat"');
 
     if (attrStart === -1 || optionStart === -1 || priceFormatStart === -1) {
-      return [parseSimpleProduct(baseName, html, "allsell")].filter(Boolean);
+      return [parseSimpleProduct(baseName, html, "allsell", url)].filter(Boolean);
     }
 
     let optionPrices;
@@ -149,7 +149,7 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
         .replace(/,\s*$/, "");
       optionPrices = JSON.parse(jsonStr);
     } catch {
-      return [parseSimpleProduct(baseName, html, "allsell")].filter(Boolean);
+      return [parseSimpleProduct(baseName, html, "allsell", url)].filter(Boolean);
     }
 
     let attributes;
@@ -171,7 +171,7 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
       jsonStr = jsonStr.slice(0, endIndex);
       attributes = JSON.parse(jsonStr);
     } catch {
-      return [parseSimpleProduct(baseName, html, "allsell")].filter(Boolean);
+      return [parseSimpleProduct(baseName, html, "allsell", url)].filter(Boolean);
     }
 
     const storageAttr = Object.values(attributes).find(
@@ -183,7 +183,7 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
     );
 
     if (!storageAttr)
-      return [parseSimpleProduct(baseName, html, "allsell")].filter(Boolean);
+      return [parseSimpleProduct(baseName, html, "allsell", url)].filter(Boolean);
 
     const results = [];
     const isApple =
@@ -213,6 +213,7 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
             cash_price,
             installment_price,
             source: "allsell",
+            url,
           });
         }
       }
@@ -242,6 +243,7 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
               cash_price,
               installment_price,
               source: "allsell",
+              url,
             });
           }
         } else {
@@ -262,6 +264,7 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
             cash_price,
             installment_price,
             source: "allsell",
+            url,
           });
         }
       }
@@ -269,7 +272,7 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
 
     return results.length > 0
       ? results
-      : [parseSimpleProduct(baseName, html, "allsell")].filter(Boolean);
+      : [parseSimpleProduct(baseName, html, "allsell", url)].filter(Boolean);
   } catch (err) {
     console.warn(`[${logTag}] Failed ${url}: ${err.message}`);
     return [];

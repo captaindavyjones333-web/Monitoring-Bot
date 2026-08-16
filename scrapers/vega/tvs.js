@@ -82,6 +82,7 @@ export async function scrapeVegaTvs() {
     cash_price: p.cash_price,
     installment_price: null, // vega has no installment pricing
     source: "vega",
+    url: p.url,
   }));
 
   // Deduplicate by name — keep first occurrence

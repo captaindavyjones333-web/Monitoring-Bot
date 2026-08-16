@@ -57,7 +57,7 @@ function parseInstallationPrice($) {
   return cleaned ? parseInt(cleaned, 10) : null;
 }
 
-function parseSimpleProduct(baseName, html) {
+function parseSimpleProduct(baseName, html, url = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
     .first()
@@ -78,13 +78,14 @@ function parseSimpleProduct(baseName, html) {
     installment_price,
     installation_price,
     source: "allsell",
+    url,
   };
 }
 
 async function fetchProductPrice(baseName, url) {
   try {
     const res = await axios.get(url, { headers: HEADERS, timeout: 10000 });
-    return parseSimpleProduct(baseName, res.data);
+    return parseSimpleProduct(baseName, res.data, url);
   } catch (err) {
     console.warn(`[allsell-ac] Failed ${url}: ${err.message}`);
     return null;
