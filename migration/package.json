@@ -1,0 +1,14 @@
+{
+  "name": "monitoring-bot-migration",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "migrate": "node migrate.js",
+    "migrate:dry-run": "node migrate.js --dry-run"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.13.1"
+  }
+}

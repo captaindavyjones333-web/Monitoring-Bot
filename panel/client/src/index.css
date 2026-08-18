@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #FFFFFF;
+  --color-surface: #FFFFFF;
+  --color-surface-subtle: #F9FAFB;
+  --color-ink: #000000;
+  --color-muted: #64748B;
+  --color-line: #E5E7EB;
+
+  --color-brand: #C8102E;
+  --color-brand-hover: #A50D26;
+  --color-brand-soft: #FDF2F4;
+  --color-brand-muted: #FDE8EB;
+
+  --color-flag-cheaper: #C8102E;
+  --color-flag-pricier: #15803D;
+  --color-flag-match: #6B7280;
+  --color-flag-best: #15803D;
+
+  --color-status-active: #15803D;
+  --color-status-review: #D97706;
+  --color-status-missing: #C8102E;
+  --color-status-removed: #9CA3AF;
+
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--color-ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .price {
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+  }
+}

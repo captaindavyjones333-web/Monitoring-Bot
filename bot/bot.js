@@ -14,6 +14,7 @@ import {
   runAirConditionersScraping,
 } from "../jobs/scrapeJob.js";
 import { runSendJob } from "../jobs/sendJob.js";
+import { runDbComparison } from "../migration/generate-comparison-report.js";
 import { loadAllCaches } from "../core/cache_manager.js";
 import { groupByNormalizedName } from "../core/normalizer.js";
 import {
@@ -89,6 +90,7 @@ const MAIN_KEYBOARD = {
       [{ text: "🔄 Լրիվ սկանավորում" }],
       ...CATEGORY_BUTTONS,
       [{ text: "👥 Օգտատերեր" }],
+      [{ text: "🧪 DB Comparison" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -456,6 +458,32 @@ bot.on("message", async (msg) => {
       userId,
       "⛔ Դուք հասանելիություն չունեք: Ուղարկեք /start հայտ ներկայացնելու համար:",
     );
+    return;
+  }
+
+  // ─── DB Comparison (admin-only test of the DB-based pipeline) ───────────
+  if (text === "🧪 DB Comparison") {
+    if (!isAdmin(userId)) return;
+    await bot.sendMessage(userId, "🗄️ Գործարկում եմ DB-based comparison...");
+    try {
+      const allMessages = await runDbComparison(
+        async (msgText) => {
+          await bot.sendMessage(userId, msgText, { parse_mode: "Markdown" });
+        },
+      );
+      if (allMessages.length === 0) {
+        await bot.sendMessage(userId, "✅ DB-ից գնային անհամապատասխանություններ չկան", MAIN_KEYBOARD);
+      } else {
+        await bot.sendMessage(
+          userId,
+          `🗄️ DB comparison ավարտված է — ${allMessages.length} հաղորդագրություն ուղարկված`,
+          MAIN_KEYBOARD,
+        );
+      }
+    } catch (err) {
+      console.error("[bot] ❌ DB Comparison failed:", err.message);
+      await bot.sendMessage(userId, "❌ DB Comparison սխալ: " + err.message, MAIN_KEYBOARD);
+    }
     return;
   }
 

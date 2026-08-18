@@ -74,6 +74,7 @@ const COLORS = [
   "amber",
   "peach",
   "lime",
+  "lilac",
   "emerald",
   "phantom",
   "crafted",
@@ -94,6 +95,16 @@ const COLORS = [
   "titan",
   "aloe",
   "jet",
+  "frost",
+  "glacier",
+  "mist",
+  "palm",
+  "lake",
+  "olive",
+  "verde",
+  "lavander",
+  "denim",
+  "icyblue",
 ];
 
 const ARMENIAN_COLORS = {
@@ -140,12 +151,14 @@ const MULTIWORD_COLORS = [
   "black shadow",
   "violet shadow",
   "peach pink",
+  "soft pink",
   "onyx black",
   "cobalt violet",
   "marble gray",
   "marble grey",
   "amber yellow",
   "titanium jetblack",
+  "titanium icyblue",
   "crafted black",
   "icy blue",
   "phantom black",
@@ -178,6 +191,11 @@ const MULTIWORD_COLORS = [
   "galactic silver",
   "tropical rain",
   "jet black",
+  "light violet",
+  "light gray",
+  "light grey",
+  "titanium color", 
+  "glacier blue",
 ];
 
 const CONNECTIVITY = ["4g", "lte", "dual sim", "dual-sim"];
