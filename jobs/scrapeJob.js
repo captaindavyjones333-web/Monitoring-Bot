@@ -1,3 +1,6 @@
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { scrapeRedstorePhones } from "../scrapers/redstore/phones.js";
 import { scrapeRedstoreTablets } from "../scrapers/redstore/tablets.js";
 import { scrapeRedstoreWatches } from "../scrapers/redstore/watches.js";
@@ -62,6 +65,8 @@ import { scrapeVestaAirConditioners } from "../scrapers/vesta/airconditioners.js
 import { scrapeVlvAirConditioners } from "../scrapers/vlv/airconditioners.js";
 import { scrapeVegaPhones } from "../scrapers/vega/phones.js";
 import { scrapeZigzagPhones } from "../scrapers/zigzag/phones.js";
+import { scrapeZigzagHeadphones } from "../scrapers/zigzag/headphones.js";
+import { scrapeZigzagSpeakers } from "../scrapers/zigzag/speakers.js";
 import { scrapeVlvPhones } from "../scrapers/vlv/phones.js";
 
 export async function runAirConditionersScraping() {
@@ -221,6 +226,7 @@ export async function runSpeakersScraping() {
     ),
     scrapeCategoryIntoSource("3dplanet", "speakers", scrape3DPlanetSpeakers),
     scrapeCategoryIntoSource("eldorado", "speakers", scrapeEldoradoSpeakers),
+    scrapeCategoryIntoSource("zigzag", "speakers", scrapeZigzagSpeakers),
   ]);
 
   console.log("[scrape] ✅ Speakers-only scrape complete");
@@ -305,6 +311,11 @@ export async function runHeadphonesScraping() {
       "3dplanet",
       "headphones",
       scrape3DPlanetHeadphones,
+    ),
+    scrapeCategoryIntoSource(
+      "zigzag",
+      "headphones",
+      scrapeZigzagHeadphones,
     ),
   ]);
 
@@ -469,3 +480,56 @@ export async function runScraping() {
 
   console.log("[scrape] ✅ Scrape job complete");
 }
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function runScript(scriptRelativePath, scriptArgs = []) {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.resolve(__dirname, scriptRelativePath);
+    console.log(`\n${"=".repeat(60)}`);
+    console.log(`[pipeline] 🚀 Running ${path.basename(scriptPath)} ${scriptArgs.join(" ")}`);
+    console.log("=".repeat(60));
+
+    const child = spawn(process.execPath, [scriptPath, ...scriptArgs], {
+      stdio: "inherit",
+    });
+
+    child.on("exit", (code) => {
+      if (code === 0) {
+        console.log(`[pipeline] ✅ ${path.basename(scriptPath)} completed successfully.`);
+        resolve();
+      } else {
+        reject(new Error(`${path.basename(scriptPath)} exited with code ${code}`));
+      }
+    });
+
+    child.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
+
+export async function runPostScrapePipeline() {
+  const cachePath = path.resolve(__dirname, "../cache");
+  console.log("[pipeline] 🔄 Executing post-scrape ingestion & fuzzy matching...");
+  await runScript("../migration/process-scrape.js", [cachePath]);
+  await runScript("../migration/fuzzy-match.js", []);
+  console.log("[pipeline] ✅ Post-scrape pipeline completed successfully.");
+}
+
+export async function runFullScraping() {
+  console.log("[scrape] 🔄 Starting full scrape job across all categories...");
+  await runScraping();
+  await runWatchesScraping();
+  await runHeadphonesScraping();
+  await runMacbooksScraping();
+  await runSpeakersScraping();
+  await runTvsScraping();
+  await runDysonScraping();
+  await runGamingScraping();
+  await runAirConditionersScraping();
+  console.log("[scrape] ✅ All category scrapers finished. Running post-scrape DB pipeline...");
+  await runPostScrapePipeline();
+  console.log("[scrape] ✅ Full scraping and post-scrape pipeline complete.");
+}
+

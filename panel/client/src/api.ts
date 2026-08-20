@@ -7,7 +7,8 @@ import type {
   ManualMatchResult,
 } from "./types";
 
-const BASE = "/api";
+const API_ORIGIN = import.meta.env.VITE_API_URL ? String(import.meta.env.VITE_API_URL).replace(/\/$/, "") : "";
+const BASE = `${API_ORIGIN}/api`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init);
@@ -39,8 +40,8 @@ export const api = {
     return request<ProductSearchResult>(`/products?${params.toString()}`);
   },
   getProduct: (id: string) => request<ProductDetail>(`/products/${id}`),
-  updateProduct: (id: string, updates: { canonicalTitle: string }) =>
-    request<{ ok: true; canonicalTitle: string; updatedAt: string }>(`/products/${id}`, {
+  updateProduct: (id: string, updates: { canonicalTitle?: string; categoryId?: string | null }) =>
+    request<{ ok: true; canonicalTitle: string; updatedAt: string; category: { id: string; name: string; slug: string } | null }>(`/products/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),

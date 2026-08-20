@@ -50,6 +50,7 @@ function parseSimpleProduct(baseName, html, url = null) {
     cash_price,
     installment_price,
     source: "yerevanmobile",
+    category: "watches",
     url,
   };
 }
@@ -122,6 +123,7 @@ async function fetchWatchVariants(baseName, url) {
         cash_price,
         installment_price,
         source: "yerevanmobile",
+    category: "watches",
         url,
       });
     }

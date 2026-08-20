@@ -34,6 +34,7 @@ function normalize(raw) {
     installment_price: null,
     installation_price: Number(raw.pricing?.installing_price) || null,
     source: "vlv",
+    category: "airconditioners",
     url: `https://vlv.am/Product/${Number(raw.seller_id) || ""}`,
   };
 }

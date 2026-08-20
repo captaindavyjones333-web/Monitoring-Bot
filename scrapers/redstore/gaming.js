@@ -12,6 +12,10 @@ const BRAND_IDS = {
   brand_306: 306,
   brand_310: 310,
   brand_299: 299,
+  brand_358: 358,
+  brand_516: 516,
+  brand_517: 517,
+  brand_531: 531,
 };
 
 async function fetchBrandPages(brandId) {
@@ -49,6 +53,7 @@ function normalize(raw) {
     cash_price: Number(raw.cash_price) || null,
     installment_price: Number(raw.installment_price) || null,
     source: "redstore",
+    category: "gaming",
     url: raw.slug ? `https://redstore.am/product/${raw.slug}` : null,
   };
 }

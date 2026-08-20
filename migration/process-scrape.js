@@ -68,33 +68,111 @@ const SOURCE_PRIORITY = [
   "vega",
 ];
 
-function extractItemKey(bucket, item) {
-  switch (bucket) {
-    case "macbooks":
-      return extractModelCode(item.name);
-    case "tvs":
-      return extractTvModelCode(item.name);
-    case "dyson":
-      return extractDysonKey(item.name);
-    case "gaming":
-      return normalizeGamingName(item.name);
-    case "airconditioners":
-      return extractACCode(item.name);
-    default: {
-      const groups = groupByNormalizedName([item]);
-      const keys = Array.from(groups.keys());
-      return keys[0] || normalizeName(item.name);
+// ── Batch grouping functions matching migrate.js / comparator.js ──
+
+function groupTvsAllSources(products) {
+  const groups = new Map();
+  for (const product of products) {
+    const code = extractTvModelCode(product.name);
+    if (!code) continue;
+    if (!groups.has(code)) groups.set(code, { normalized: code, code, sources: {} });
+    groups.get(code).sources[product.source] = product;
+  }
+  for (const product of products) {
+    if (extractTvModelCode(product.name)) continue;
+    const upperName = product.name.toUpperCase();
+    let matchedCode = null;
+    for (const code of groups.keys()) {
+      if (upperName.includes(code)) {
+        matchedCode = code;
+        break;
+      }
+    }
+    if (!matchedCode) continue;
+    groups.get(matchedCode).sources[product.source] = product;
+  }
+  return groups;
+}
+
+function assignBatchKeys(rawItems) {
+  const macbookProducts = [];
+  const tvProducts = [];
+  const dysonProducts = [];
+  const gamingProducts = [];
+  const acProducts = [];
+  const byCategory = {
+    phones: [],
+    tablets: [],
+    watches: [],
+    headphones: [],
+    speakers: [],
+  };
+
+  for (const p of rawItems) {
+    const bucket = detectBucket(p.name, p.category);
+    if (bucket === "macbooks") {
+      macbookProducts.push(p);
+    } else if (bucket === "tvs") {
+      tvProducts.push(p);
+    } else if (bucket === "dyson") {
+      dysonProducts.push(p);
+    } else if (bucket === "gaming") {
+      gamingProducts.push(p);
+    } else if (bucket === "airconditioners") {
+      acProducts.push(p);
+    } else if (byCategory[bucket]) {
+      byCategory[bucket].push(p);
+    } else {
+      (byCategory.phones).push(p);
+    }
+  }
+
+  // Pre-calculate normalized keys using batch grouping
+  for (const [cat, products] of Object.entries(byCategory)) {
+    const groups = groupByNormalizedName(products);
+    for (const [key, group] of groups) {
+      for (const src of Object.keys(group.sources)) {
+        const item = group.sources[src];
+        if (item) item._assignedKey = key;
+      }
+    }
+  }
+
+  const tvGroups = groupTvsAllSources(tvProducts);
+  for (const [key, group] of tvGroups) {
+    for (const src of Object.keys(group.sources)) {
+      const item = group.sources[src];
+      if (item) item._assignedKey = key;
+    }
+  }
+
+  for (const p of macbookProducts) p._assignedKey = extractModelCode(p.name);
+  for (const p of dysonProducts) p._assignedKey = extractDysonKey(p.name);
+  for (const p of gamingProducts) p._assignedKey = normalizeGamingName(p.name);
+  for (const p of acProducts) p._assignedKey = extractACCode(p.name);
+
+  for (const p of rawItems) {
+    if (!p._assignedKey) {
+      p._assignedKey = normalizeName(p.name);
     }
   }
 }
 
-function detectBucket(name) {
+function extractItemKey(bucket, item) {
+  return item._assignedKey || normalizeName(item.name);
+}
+
+function detectBucket(name, scraperCategory) {
+  // Prefer the category provided directly by the scraper (if present and
+  // recognised) over regex-based detection — this is more reliable because
+  // each scraper file already knows which category it represents.
+  if (scraperCategory && CATEGORY_SLUG_MAP[scraperCategory]) return scraperCategory;
   if (MACBOOK_REGEX.test(name)) return "macbooks";
   if (TV_REGEX.test(name)) return "tvs";
   if (DYSON_REGEX.test(name)) return "dyson";
   if (GAMING_REGEX.test(name)) return "gaming";
   if (AC_REGEX.test(name)) return "airconditioners";
-  return detectCategory(name); // phones/tablets/watches/headphones/speakers
+  return detectCategory(name);
 }
 
 // ── Load input (single file or a cache/ folder, same shapes migrate.js accepts) ──
@@ -148,6 +226,41 @@ for (const p of raw) {
   if (p.price == null) p.price = p.cash_price ?? null;
 }
 
+// Sanitize prices — NUMERIC(12,2) max is 9,999,999,999.99.
+// Some scrapers (e.g. vesta) concatenate two price values into one number.
+// Null out anything that would overflow rather than crashing the whole run.
+const MAX_PRICE = 9_999_999_999.99;
+for (const p of raw) {
+  for (const field of ["price", "cash_price", "installment_price", "installation_price"]) {
+    if (p[field] != null && Math.abs(Number(p[field])) > MAX_PRICE) {
+      console.warn(`  [${p.source}] "${p.name}" — ${field} value ${p[field]} overflows NUMERIC(12,2), setting to null.`);
+      p[field] = null;
+    }
+  }
+  // Re-sync price from cash_price if it was just nulled
+  if (p.price == null && p.cash_price != null) p.price = p.cash_price;
+}
+
+// Deduplicate by (source, url, name) — scrape files sometimes contain the same
+// listing more than once, which would cause a unique-constraint violation on INSERT.
+{
+  const seen = new Set();
+  const deduped = [];
+  for (const item of raw) {
+    const key = `${item.source}||${item.url ?? ""}||${item.name}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(item);
+    }
+  }
+  if (deduped.length < raw.length) {
+    console.warn(`  Deduplicated ${raw.length - deduped.length} duplicate listing(s) from input.`);
+  }
+  raw = deduped;
+}
+
+assignBatchKeys(raw);
+
 console.log(`Loaded ${raw.length} listing(s) from ${inputPath}\n`);
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -172,18 +285,23 @@ async function run() {
         continue;
       }
 
-      // ── Case 1: existing listing (matched by store + url, or store + raw_title) — just an update ──
+      // ── Case 1: existing listing — match by (store + url + title) or (store + title) ──
+      // We intentionally match on title too: same URL with a different title is a
+      // different variant (e.g. 64 GB vs 128 GB) and must be a separate row, not an
+      // overwrite — which would cause a unique-constraint violation.
       let existingListing = null;
       if (item.url) {
         const existing = await client.query(
-          `SELECT id, product_id, cash_price, price, installment_price, raw_title FROM store_listings WHERE store_id = $1 AND url = $2`,
-          [storeId, item.url],
+          `SELECT id, product_id, cash_price, price, installment_price, raw_title
+           FROM store_listings WHERE store_id = $1 AND url = $2 AND raw_title = $3`,
+          [storeId, item.url, item.name],
         );
         if (existing.rows.length > 0) existingListing = existing.rows[0];
       }
       if (!existingListing) {
         const existingByName = await client.query(
-          `SELECT id, product_id, cash_price, price, installment_price, raw_title FROM store_listings WHERE store_id = $1 AND raw_title = $2`,
+          `SELECT id, product_id, cash_price, price, installment_price, raw_title
+           FROM store_listings WHERE store_id = $1 AND raw_title = $2`,
           [storeId, item.name],
         );
         if (existingByName.rows.length > 0) existingListing = existingByName.rows[0];
@@ -191,15 +309,42 @@ async function run() {
 
       if (existingListing) {
         const listing = existingListing;
+        const bucket = detectBucket(item.name, item.category);
+        const categorySlug = CATEGORY_SLUG_MAP[bucket];
+        const key = extractItemKey(bucket, item);
+        const categoryId = categoryIdBySlug[categorySlug] ?? null;
+
         if (!dryRun) {
           await client.query(
             `UPDATE store_listings
-             SET raw_title = $1, url = COALESCE($2, url), price = $3, cash_price = $4,
-                 installment_price = $5, installation_price = $6, status = 'active',
+             SET url = COALESCE($1, url), price = $2, cash_price = $3,
+                 installment_price = $4, installation_price = $5,
+                 normalized_key = $6,
+                 normalized_title = $7,
+                 status = 'active',
                  last_seen_at = now(), last_checked_at = now(), updated_at = now()
-             WHERE id = $7`,
-            [item.name, item.url ?? null, item.price, item.cash_price, item.installment_price, item.installation_price ?? null, listing.id],
+             WHERE id = $8`,
+            [
+              item.url ?? null,
+              item.price,
+              item.cash_price,
+              item.installment_price,
+              item.installation_price ?? null,
+              key,
+              bucket === "phones" || bucket === "tablets" || bucket === "watches" || bucket === "headphones" || bucket === "speakers"
+                ? normalizeName(item.name)
+                : null,
+              listing.id,
+            ],
           );
+
+          if (categoryId && listing.product_id) {
+            await client.query(
+              `UPDATE products SET category_id = $1 WHERE id = $2 AND category_id IS NULL`,
+              [categoryId, listing.product_id],
+            );
+          }
+
           if (
             Number(listing.cash_price) !== Number(item.cash_price) ||
             Number(listing.price) !== Number(item.price) ||
@@ -217,7 +362,7 @@ async function run() {
       }
 
       // ── Case 2: genuinely new listing — find the right product or create one ──
-      const bucket = detectBucket(item.name);
+      const bucket = detectBucket(item.name, item.category);
       const categorySlug = CATEGORY_SLUG_MAP[bucket];
       const key = extractItemKey(bucket, item);
 
@@ -259,6 +404,7 @@ async function run() {
              (store_id, product_id, raw_title, normalized_title, normalized_key, price, cash_price,
               installment_price, installation_price, url, status)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active')
+           ON CONFLICT (store_id, url, raw_title) WHERE url IS NOT NULL DO NOTHING
            RETURNING id`,
           [
             storeId,
@@ -275,11 +421,13 @@ async function run() {
             item.url ?? null,
           ],
         );
-        await client.query(
-          `INSERT INTO product_matches (store_listing_id, product_id, match_method, confidence_score, status)
-           VALUES ($1, $2, $3, $4, 'confirmed')`,
-          [listingRes.rows[0].id, productId, key ? "regex_rule" : "manual", key ? 1.0 : 0.5],
-        );
+        if (listingRes.rows.length > 0) {
+          await client.query(
+            `INSERT INTO product_matches (store_listing_id, product_id, match_method, confidence_score, status)
+             VALUES ($1, $2, $3, $4, 'confirmed')`,
+            [listingRes.rows[0].id, productId, key ? "regex_rule" : "manual", key ? 1.0 : 0.5],
+          );
+        }
       }
       if (!item.url) stats.skippedNoUrl += 1;
     }

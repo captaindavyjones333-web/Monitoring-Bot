@@ -43,6 +43,7 @@ function normalize(raw) {
     cash_price: Number(raw.pricing?.selling_price) || null,
     installment_price: null, // vlv phones has no installment pricing
     source: "vlv",
+    category: "phones",
     url: `https://vlv.am/Product/${Number(raw.seller_id) || ""}`,
   };
 }

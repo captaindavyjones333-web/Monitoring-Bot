@@ -116,6 +116,7 @@ async function fetchProductDetail(page, listingName, url, listingCashPrice) {
       cash_price: cashPrice,
       installment_price: installmentPrice,
       source: "mobilecentre",
+    category: "gaming",
       url,
     };
   } catch (err) {

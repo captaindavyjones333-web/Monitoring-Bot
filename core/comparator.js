@@ -54,6 +54,7 @@ const SOURCE_ORDER_BY_CATEGORY = {
     "mobilecentre",
     "allsell",
     "3dplanet",
+    "zigzag",
   ],
   speakers: [
     "redstore",
@@ -62,6 +63,7 @@ const SOURCE_ORDER_BY_CATEGORY = {
     "allsell",
     "3dplanet",
     "eldorado",
+    "zigzag",
   ],
   macbooks: [
     "redstore",
@@ -519,7 +521,7 @@ export function buildMacbookComparisons(groups) {
     );
 
     perCodeResults.push({
-      key, // model code e.g. "MDE04"
+      key: group.code || key, // model code e.g. "MDE04"
       seriesKey, // e.g. "MacBook Pro 14.2\" M5"
       storage, // e.g. "512GB"
       anchorCash,
@@ -1082,9 +1084,10 @@ const IPHONE_ORDER = [
   "iphone 14",
   "iphone 15",
   "iphone 16",
+  "iphone 17 air",
+  "iphone air",
   "iphone 17e",
   "iphone 17",
-  "iphone 17 air",
   "iphone 17 pro",
   "iphone 17 pro max",
 ];
@@ -1092,10 +1095,11 @@ const SAMSUNG_ORDER = ["galaxy a", "galaxy s", "galaxy z"];
 
 function getIphoneSortIndex(name) {
   const specificityOrder = [
-    "iphone 17e",
     "iphone 17 pro max",
     "iphone 17 pro",
     "iphone 17 air",
+    "iphone air",
+    "iphone 17e",
     "iphone 17",
     "iphone 16",
     "iphone 15",
@@ -1106,7 +1110,7 @@ function getIphoneSortIndex(name) {
   return matched ? IPHONE_ORDER.indexOf(matched) : 99;
 }
 
-function getSortKey(message) {
+export function getSortKey(message) {
   const name = message.toLowerCase();
 
   if (name.includes("iphone")) {
@@ -1135,7 +1139,7 @@ function getPhoneGroupKey(message) {
 
   // 1. iPhones: Group by generation series (e.g. 13 series, 14 series, 15 series, 16 series, 17 series incl. Air)
   if (name.includes("iphone")) {
-    if (name.includes("iphone 17") || name.includes("iphone air"))
+    if (name.includes("iphone 17") || name.includes("iphone air") || /\b17\s*air\b/i.test(name))
       return "0_iphone_17";
     if (name.includes("iphone 16")) return "0_iphone_16";
     if (name.includes("iphone 15")) return "0_iphone_15";
@@ -1198,7 +1202,7 @@ function getPhoneGroupKey(message) {
   return `5_other_${name.split("\n")[0]}`;
 }
 
-function groupPhoneAlerts(phoneMessages) {
+export function groupPhoneAlerts(phoneMessages) {
   const groups = new Map();
 
   for (const msg of phoneMessages) {
@@ -1227,7 +1231,7 @@ function getBrandGroupKey(category, message) {
   const name = message.toLowerCase();
 
   if (category === "watches") {
-    if (/apple/i.test(name)) return "apple";
+    if (/apple|i\s*watch/i.test(name)) return "apple";
     if (/samsung|galaxy/i.test(name)) return "samsung";
     if (/xiaomi/i.test(name)) return "xiaomi";
     return "other";
@@ -1235,8 +1239,18 @@ function getBrandGroupKey(category, message) {
 
   if (category === "headphones") {
     if (/airpods/i.test(name)) return "airpods";
-    if (/buds/i.test(name)) return "galaxy buds";
+    if (/beats/i.test(name)) return "beats";
     if (/marshall/i.test(name)) return "marshall";
+    if (/sony/i.test(name)) return "sony";
+    if (/jbl/i.test(name)) return "jbl";
+    if (/bose/i.test(name)) return "bose";
+    if (/belkin/i.test(name)) return "belkin";
+    if (/logitech/i.test(name)) return "logitech";
+    if (/oneplus/i.test(name)) return "oneplus";
+    if (/nothing/i.test(name)) return "nothing";
+    if (/xiaomi|redmi|poco/i.test(name)) return "xiaomi";
+    if (/galaxy\s*buds|samsung/i.test(name)) return "galaxy buds";
+    if (/buds/i.test(name)) return "galaxy buds";
     return "other";
   }
 
@@ -1244,6 +1258,8 @@ function getBrandGroupKey(category, message) {
     if (/ipad/i.test(name)) return "ipad";
     if (/samsung|galaxy/i.test(name)) return "samsung";
     if (/xiaomi|redmi|poco/i.test(name)) return "xiaomi";
+    if (/amazon|\bfire\b/i.test(name)) return "amazon";
+    if (/remarkable/i.test(name)) return "remarkable";
     return "other";
   }
 
@@ -1251,6 +1267,11 @@ function getBrandGroupKey(category, message) {
     if (/jbl/i.test(name)) return "jbl";
     if (/marshall/i.test(name)) return "marshall";
     if (/harman/i.test(name)) return "harman kard";
+    if (/bose/i.test(name)) return "bose";
+    if (/beats/i.test(name)) return "beats";
+    if (/sony/i.test(name)) return "sony";
+    if (/yandex|станция/i.test(name)) return "yandex";
+    if (/xiaomi/i.test(name)) return "xiaomi";
     return "other";
   }
 
@@ -1259,6 +1280,10 @@ function getBrandGroupKey(category, message) {
     if (/nintendo|switch/i.test(name)) return "nintendo";
     if (/xbox/i.test(name)) return "xbox";
     if (/meta|quest|oculus/i.test(name)) return "meta";
+    if (/logitech/i.test(name)) return "logitech";
+    if (/pxn/i.test(name)) return "pxn";
+    if (/thrustmaster/i.test(name)) return "thrustmaster";
+    if (/hori/i.test(name)) return "hori";
     return "other";
   }
 
@@ -1269,7 +1294,7 @@ function getBrandGroupKey(category, message) {
   return message;
 }
 
-function groupCategoryAlertsByBrand(category, messages) {
+export function groupCategoryAlertsByBrand(category, messages) {
   const grouped = new Map();
 
   for (const msg of messages) {
@@ -1280,10 +1305,44 @@ function groupCategoryAlertsByBrand(category, messages) {
 
   const order = {
     watches: ["apple", "samsung", "xiaomi", "other"],
-    tablets: ["ipad", "samsung", "xiaomi", "other"],
-    headphones: ["airpods", "galaxy buds", "marshall", "other"],
-    speakers: ["jbl", "marshall", "harman kard", "other"],
-    gaming: ["playstation", "nintendo", "xbox", "meta", "other"],
+    tablets: ["ipad", "samsung", "xiaomi", "amazon", "remarkable", "other"],
+    headphones: [
+      "airpods",
+      "galaxy buds",
+      "marshall",
+      "sony",
+      "xiaomi",
+      "oneplus",
+      "nothing",
+      "logitech",
+      "jbl",
+      "bose",
+      "belkin",
+      "beats",
+      "other",
+    ],
+    speakers: [
+      "jbl",
+      "marshall",
+      "harman kard",
+      "bose",
+      "beats",
+      "sony",
+      "yandex",
+      "xiaomi",
+      "other",
+    ],
+    gaming: [
+      "playstation",
+      "nintendo",
+      "xbox",
+      "meta",
+      "logitech",
+      "pxn",
+      "thrustmaster",
+      "hori",
+      "other",
+    ],
     dyson: ["dyson"],
   }[category];
 

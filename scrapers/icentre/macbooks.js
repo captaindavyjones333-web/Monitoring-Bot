@@ -52,6 +52,7 @@ function extractListingProducts($) {
       cash_price,
       installment_price: null,
       source: "icentre",
+    category: "macbooks",
       url,
     });
   });

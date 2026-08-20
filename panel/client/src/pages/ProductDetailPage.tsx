@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router";
 import { api } from "../api";
-import type { ProductDetail, ProductListItem, StoreListing, ListingStatus } from "../types";
+import type { Category, ProductDetail, ProductListItem, StoreListing, ListingStatus } from "../types";
 
 function formatPrice(n: number | null): string {
   if (n == null) return "—";
@@ -60,6 +60,11 @@ export default function ProductDetailPage() {
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [linkSuccessMessage, setLinkSuccessMessage] = useState("");
 
+  // Category mapping states
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isEditingCategory, setIsEditingCategory] = useState(false);
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -70,6 +75,13 @@ export default function ProductDetailPage() {
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Load categories for the category mapping dropdown
+  useEffect(() => {
+    if (isEditingCategory && categories.length === 0) {
+      api.getCategories().then(setCategories).catch(() => {});
+    }
+  }, [isEditingCategory]);
 
   // Debounced search for manual matching
   useEffect(() => {
@@ -175,6 +187,30 @@ export default function ProductDetailPage() {
     }
   }
 
+  async function handleSaveCategory(newCategoryId: string | null) {
+    if (!id || !product) return;
+
+    setIsSavingCategory(true);
+    setError("");
+    try {
+      const res = await api.updateProduct(id, { categoryId: newCategoryId });
+      setProduct((prev) =>
+        prev
+          ? {
+              ...prev,
+              category: res.category,
+              updatedAt: res.updatedAt,
+            }
+          : prev,
+      );
+      setIsEditingCategory(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update category");
+    } finally {
+      setIsSavingCategory(false);
+    }
+  }
+
   async function handleDeleteListing(listing: StoreListing) {
     if (!product) return;
 
@@ -207,8 +243,8 @@ export default function ProductDetailPage() {
     if (!id || !product) return;
 
     const confirmed = window.confirm(
-      `Are you sure you want to delete "${product.canonicalTitle}"?\n\n` +
-      `This will remove the product and unassign all linked store listings so they can be rematched. This action cannot be easily undone.`
+      `Are you sure you want to delete group "${product.canonicalTitle}"?\n\n` +
+      `This will delete the group and separate all linked listings into individual groups, each titled with its own product name. This action cannot be easily undone.`
     );
     if (!confirmed) return;
 
@@ -218,7 +254,7 @@ export default function ProductDetailPage() {
       await api.deleteProduct(id);
       navigate("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete product");
+      setError(err instanceof Error ? err.message : "Failed to delete group");
       setIsDeleting(false);
     }
   }
@@ -290,16 +326,44 @@ export default function ProductDetailPage() {
           disabled={isDeleting}
           className="border border-brand/30 bg-brand-soft text-brand hover:bg-brand hover:text-white text-xs font-semibold rounded-xl px-3.5 py-1.5 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
         >
-          {isDeleting ? "Deleting…" : "Delete product"}
+          {isDeleting ? "Deleting…" : "Delete Group"}
         </button>
       </div>
 
       <div className="mb-6">
         <div className="flex flex-wrap items-center gap-2 mb-2">
-          {product.category && (
-            <span className="text-[11px] uppercase tracking-wider font-semibold text-muted bg-surface-subtle border border-line rounded-md px-2 py-0.5">
-              {product.category.name}
-            </span>
+          {isEditingCategory ? (
+            <div className="flex items-center gap-2">
+              <select
+                value={product.category?.id ?? ""}
+                onChange={(e) => handleSaveCategory(e.target.value || null)}
+                disabled={isSavingCategory}
+                className="rounded-lg border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+              >
+                <option value="">No category</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => setIsEditingCategory(false)}
+                disabled={isSavingCategory}
+                className="text-[11px] font-semibold text-muted hover:text-ink transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsEditingCategory(true)}
+              className="text-[11px] uppercase tracking-wider font-semibold text-muted bg-surface-subtle border border-line rounded-md px-2 py-0.5 hover:border-brand/40 hover:text-brand hover:bg-brand-soft/30 transition-colors cursor-pointer inline-flex items-center gap-1"
+              title="Click to change category"
+            >
+              {product.category?.name ?? "No category"}
+              <span className="text-[9px] normal-case tracking-normal opacity-60">✎</span>
+            </button>
           )}
           {product.brand && (
             <span className="text-[11px] font-semibold text-brand bg-brand-soft border border-brand/20 rounded-md px-2 py-0.5">
@@ -555,6 +619,13 @@ export default function ProductDetailPage() {
                       <h4 className="font-semibold text-ink text-sm sm:text-base truncate" title={item.canonicalTitle}>
                         {item.canonicalTitle}
                       </h4>
+                      {item.minPrice != null && (
+                        <p className="text-xs font-semibold text-ink mt-1">
+                          {item.minPrice === item.maxPrice
+                            ? formatPrice(item.minPrice)
+                            : `${formatPrice(item.minPrice)} – ${formatPrice(item.maxPrice)}`}
+                        </p>
+                      )}
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {item.storeNames.map((name) => (
                           <span

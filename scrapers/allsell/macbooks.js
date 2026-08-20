@@ -72,7 +72,8 @@ async function parseSimpleProductFromPage(baseName, page, url = null) {
       ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
       : null;
 
-    return { name: baseName, cash_price, installment_price, source: "allsell", url };
+    return { name: baseName, cash_price, installment_price, source: "allsell",
+    category: "macbooks", url };
   }, baseName, url);
 }
 
@@ -294,6 +295,7 @@ async function scrapeConfigurableProduct(page, baseName, url, attributes, validC
           cash_price,
           installment_price,
           source: "allsell",
+    category: "macbooks",
           url,
           _productId: productId, // internal only, stripped before returning
         });

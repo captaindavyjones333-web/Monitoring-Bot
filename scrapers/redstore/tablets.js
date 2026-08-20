@@ -6,6 +6,8 @@ const BRAND_IDS = {
   apple: 294,
   samsung: 295,
   xiaomi: 296,
+  amazon: 512,
+  remarkable: 513,
 };
 
 // Attribute IDs observed to carry the chip name for tablets (e.g. "Apple M5",
@@ -88,6 +90,7 @@ function normalize(raw) {
     cash_price: Number(raw.cash_price) || null,
     installment_price: Number(raw.installment_price) || null,
     source: "redstore",
+    category: "tablets",
     url: raw.slug ? `https://redstore.am/product/${raw.slug}` : null,
   };
 }

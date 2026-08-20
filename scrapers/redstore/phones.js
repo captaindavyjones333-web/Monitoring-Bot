@@ -52,6 +52,7 @@ function normalize(raw) {
     cash_price: Number(raw.cash_price) || null,
     installment_price: Number(raw.installment_price) || null,
     source: "redstore",
+    category: "phones",
     url: raw.slug ? `https://redstore.am/product/${raw.slug}` : null,
   };
 }

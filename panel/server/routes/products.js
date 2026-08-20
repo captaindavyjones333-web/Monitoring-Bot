@@ -207,21 +207,24 @@ productsRouter.get("/:id", async (req, res, next) => {
   }
 });
 
-// PATCH /api/products/:id — update product details (e.g. canonicalTitle)
+// PATCH /api/products/:id — update product details (e.g. canonicalTitle, categoryId)
 productsRouter.patch("/:id", async (req, res, next) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
-    const { canonicalTitle } = req.body || {};
+    const { canonicalTitle, categoryId } = req.body || {};
 
-    if (!canonicalTitle || typeof canonicalTitle !== "string" || !canonicalTitle.trim()) {
-      return res.status(400).json({ error: "canonicalTitle is required" });
+    const hasTitle = canonicalTitle && typeof canonicalTitle === "string" && canonicalTitle.trim();
+    const hasCategory = categoryId !== undefined;
+
+    if (!hasTitle && !hasCategory) {
+      return res.status(400).json({ error: "canonicalTitle or categoryId is required" });
     }
 
     await client.query("BEGIN");
 
     const productRes = await client.query(
-      `SELECT id, canonical_title, status FROM products WHERE id = $1`,
+      `SELECT id, canonical_title, category_id, status FROM products WHERE id = $1`,
       [id],
     );
 
@@ -230,34 +233,66 @@ productsRouter.patch("/:id", async (req, res, next) => {
       return res.status(404).json({ error: "Product not found or not active" });
     }
 
-    const previousTitle = productRes.rows[0].canonical_title;
-    const newTitle = canonicalTitle.trim();
+    const previous = productRes.rows[0];
+    const details = {};
 
-    const updateRes = await client.query(
-      `UPDATE products
-       SET canonical_title = $1, updated_at = now()
-       WHERE id = $2
-       RETURNING id, canonical_title, brand, category_id, updated_at`,
-      [newTitle, id],
-    );
+    if (hasTitle) {
+      const newTitle = canonicalTitle.trim();
+      await client.query(
+        `UPDATE products SET canonical_title = $1, updated_at = now() WHERE id = $2`,
+        [newTitle, id],
+      );
+      details.previous_title = previous.canonical_title;
+      details.new_title = newTitle;
+    }
+
+    if (hasCategory) {
+      // categoryId can be null (to unset) or a valid category id
+      const newCategoryId = categoryId || null;
+
+      if (newCategoryId) {
+        // Validate the category exists
+        const catRes = await client.query(`SELECT id FROM categories WHERE id = $1`, [newCategoryId]);
+        if (catRes.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({ error: "Category not found" });
+        }
+      }
+
+      await client.query(
+        `UPDATE products SET category_id = $1, updated_at = now() WHERE id = $2`,
+        [newCategoryId, id],
+      );
+      details.previous_category_id = previous.category_id;
+      details.new_category_id = newCategoryId;
+    }
 
     await client.query(
       `INSERT INTO audit_log (action, entity_type, entity_id, details)
-       VALUES ('product_title_updated', 'products', $1, $2::jsonb)`,
-      [
-        id,
-        JSON.stringify({
-          previous_title: previousTitle,
-          new_title: newTitle,
-        }),
-      ],
+       VALUES ('product_updated', 'products', $1, $2::jsonb)`,
+      [id, JSON.stringify(details)],
     );
 
     await client.query("COMMIT");
+
+    // Fetch updated product with category info for the response
+    const updatedRes = await client.query(
+      `SELECT p.id, p.canonical_title, p.updated_at,
+              c.id AS category_id, c.name AS category_name, c.slug AS category_slug
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       WHERE p.id = $1`,
+      [id],
+    );
+    const u = updatedRes.rows[0];
+
     res.json({
       ok: true,
-      canonicalTitle: updateRes.rows[0].canonical_title,
-      updatedAt: updateRes.rows[0].updated_at,
+      canonicalTitle: u.canonical_title,
+      updatedAt: u.updated_at,
+      category: u.category_id
+        ? { id: u.category_id, name: u.category_name, slug: u.category_slug }
+        : null,
     });
   } catch (err) {
     await client.query("ROLLBACK");
@@ -380,23 +415,38 @@ productsRouter.delete("/:id", async (req, res, next) => {
       [id],
     );
 
-    // 2. Unassign linked store listings
-    await client.query(
-      `UPDATE store_listings SET product_id = NULL WHERE product_id = $1`,
+    // 2. Fetch all linked store listings before separating them
+    const listingsRes = await client.query(
+      `SELECT id, raw_title, normalized_title FROM store_listings WHERE product_id = $1`,
       [id],
     );
 
-    // 3. Remove any pending merge suggestions involving this product
+    // 3. For each listing, create a new separate product titled with its own product name
+    for (const listing of listingsRes.rows) {
+      const listingTitle = (listing.normalized_title || listing.raw_title || "").trim() || p.canonical_title;
+      const newProductRes = await client.query(
+        `INSERT INTO products (canonical_title, category_id, brand, attributes, status)
+         VALUES ($1, $2, $3, '{}'::jsonb, 'active')
+         RETURNING id`,
+        [listingTitle, p.category_id || null, p.brand || null],
+      );
+      await client.query(
+        `UPDATE store_listings SET product_id = $1 WHERE id = $2`,
+        [newProductRes.rows[0].id, listing.id],
+      );
+    }
+
+    // 4. Remove any pending merge suggestions involving this product
     await client.query(
       `DELETE FROM product_merge_candidates WHERE (product_a_id = $1 OR product_b_id = $1) AND status = 'suggested'`,
       [id],
     );
 
-    // 4. Log to audit_log
+    // 5. Log to audit_log
     await client.query(
       `INSERT INTO audit_log (action, entity_type, entity_id, details)
        VALUES ('product_deleted', 'products', $1, $2::jsonb)`,
-      [id, JSON.stringify({ canonical_title: p.canonical_title })],
+      [id, JSON.stringify({ canonical_title: p.canonical_title, listings_separated: listingsRes.rows.length })],
     );
 
     await client.query("COMMIT");

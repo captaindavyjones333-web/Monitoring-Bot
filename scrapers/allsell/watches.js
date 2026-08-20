@@ -63,7 +63,8 @@ function parseSimpleProduct(baseName, html, url = null) {
     ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
     : null;
 
-  return { name: baseName, cash_price, installment_price, source: "allsell", url };
+  return { name: baseName, cash_price, installment_price, source: "allsell",
+    category: "watches", url };
 }
 
 async function fetchWatchVariants(baseName, url) {
@@ -148,6 +149,7 @@ async function fetchWatchVariants(baseName, url) {
           cash_price,
           installment_price,
           source: "allsell",
+    category: "watches",
           url,
         });
       }

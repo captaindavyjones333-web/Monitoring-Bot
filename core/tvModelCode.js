@@ -1,6 +1,8 @@
 const XIAOMI_L_CODE_REGEX = /\bL\d{2,3}M[A-Z0-9]-[A-Z0-9]+\b/;
 const SAMSUNG_CODE_REGEX = /\b[UQ]E\d{2,3}[A-Z0-9]{4,10}\b/;
 const EVVOLI_CODE_REGEX = /\b\d{2}EV\d{3}[A-Z0-9-]*\b/;
+// Sony Bravia: KD-55X85K, KE-65A80J, XR-55A90J, etc.
+const SONY_CODE_REGEX = /\b(KD|KE|XR)-\d{2}[A-Z0-9]+\b/;
 
 // Known mapping from distributor SKU (ELA-codes, used by mobilecentre)
 // to Xiaomi's own L-code prefix. Maintained manually — there's no
@@ -34,6 +36,9 @@ export function extractTvModelCode(name) {
 
   const evvoliMatch = upper.match(EVVOLI_CODE_REGEX);
   if (evvoliMatch) return evvoliMatch[0].split("-")[0];
+
+  const sonyMatch = upper.match(SONY_CODE_REGEX);
+  if (sonyMatch) return sonyMatch[0];
 
   return null;
 }

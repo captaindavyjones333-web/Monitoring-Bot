@@ -5,7 +5,7 @@ import { fetchAllBrands } from "./client.js";
 // if the API only accepts them combined (not per-brand), we call once
 // with a synthetic key.
 const BRAND_IDS = {
-  speakers: "307,308,309",
+  speakers: "307,308,309,303,404,331,330,296",
 };
 
 function normalize(raw) {
@@ -17,6 +17,7 @@ function normalize(raw) {
     cash_price: Number(raw?.cash_price) || null,
     installment_price: Number(raw?.installment_price) || null,
     source: "redstore",
+    category: "speakers",
     url: raw?.slug ? `https://redstore.am/product/${raw.slug}` : null,
   };
 }

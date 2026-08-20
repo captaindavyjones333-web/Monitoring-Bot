@@ -107,6 +107,7 @@ export async function scrapeZigzagDyson() {
             cash_price: p.cash_price,
             installment_price: null, // zigzag doesn't provide installment pricing
             source: "zigzag",
+    category: "dyson",
             url: p.url,
           });
           newCount++;

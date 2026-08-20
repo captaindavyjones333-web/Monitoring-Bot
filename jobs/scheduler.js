@@ -1,24 +1,15 @@
 import cron from "node-cron";
-import { runScraping } from "./scrapeJob.js";
-import { runWatchesScraping, runHeadphonesScraping, runSpeakersScraping, runTvsScraping, runMacbooksScraping, runDysonScraping, runGamingScraping } from "./scrapeJob.js";
+import { runFullScraping } from "./scrapeJob.js";
 import { runPriceWatchJob } from "./priceWatchJob.js";
 
 export function startScheduler(bot, getApprovedUserIds) {
-  // 6:00 AM Yerevan time — scrape every category, sequentially to avoid
-  // overloading Puppeteer/Cloudflare-challenge sites simultaneously.
+  // 6:00 AM Yerevan time — scrape every category and run post-scrape pipeline.
   cron.schedule(
     "0 6 * * *",
     async () => {
       console.log("[scheduler] 🌅 6:00 AM full scrape starting...");
       try {
-        await runScraping();
-        await runWatchesScraping();
-        await runHeadphonesScraping();
-        await runSpeakersScraping();
-        await runTvsScraping();
-        await runMacbooksScraping();
-        await runDysonScraping();
-        await runGamingScraping();
+        await runFullScraping();
         console.log("[scheduler] ✅ 6:00 AM full scrape complete");
       } catch (err) {
         console.error("[scheduler] ❌ 6:00 AM scrape failed:", err.message);

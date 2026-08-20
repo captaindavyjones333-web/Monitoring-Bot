@@ -4,9 +4,7 @@ import * as cheerio from "cheerio";
 const BASE_URL = "https://allsell.am";
 
 const CATEGORY_URLS = [
-  "https://allsell.am/am/audio-video-photo/audio/headphones?mgs_brand=16&price=5900-309500", // Apple
-  "https://allsell.am/am/audio-video-photo/audio/headphones?mgs_brand=43&price=5900-309500", // Samsung
-  "https://allsell.am/am/audio-video-photo/audio/headphones?mgs_brand=21&price=5900-309500", // Marshall
+  "https://allsell.am/am/audio-video-photo/audio/headphones",
 ];
 
 const HEADERS = {
@@ -54,7 +52,9 @@ async function fetchListingPage(categoryUrl, page) {
 
 function parseSimpleProduct(baseName, html, url = null) {
   const $ = cheerio.load(html);
-  const cashRaw = $("[data-price-type='finalPrice']").first().attr("data-price-amount");
+  const cashRaw = $("[data-price-type='finalPrice']")
+    .first()
+    .attr("data-price-amount");
   const cash_price = cashRaw ? parseInt(cashRaw, 10) : null;
   if (!cash_price) return null;
 
@@ -63,7 +63,14 @@ function parseSimpleProduct(baseName, html, url = null) {
     ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
     : null;
 
-  return { name: baseName, cash_price, installment_price, source: "allsell", url };
+  return {
+    name: baseName,
+    cash_price,
+    installment_price,
+    source: "allsell",
+    category: "headphones",
+    url,
+  };
 }
 
 async function fetchProductPrice(baseName, url) {
@@ -81,7 +88,10 @@ export async function scrapeAllsellHeadphones() {
 
   for (const categoryUrl of CATEGORY_URLS) {
     console.log(`[allsell-headphones] Fetching: ${categoryUrl}`);
-    const { products: firstPage, totalPages } = await fetchListingPage(categoryUrl, 1);
+    const { products: firstPage, totalPages } = await fetchListingPage(
+      categoryUrl,
+      1,
+    );
     allListingProducts.push(...firstPage);
 
     for (let page = 2; page <= totalPages; page++) {
@@ -100,7 +110,9 @@ export async function scrapeAllsellHeadphones() {
     }
   }
 
-  console.log(`[allsell-headphones] ${unique.length} unique products, fetching details...`);
+  console.log(
+    `[allsell-headphones] ${unique.length} unique products, fetching details...`,
+  );
 
   const results = [];
   for (let i = 0; i < unique.length; i++) {

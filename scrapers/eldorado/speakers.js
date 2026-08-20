@@ -5,7 +5,7 @@ puppeteerExtra.use(StealthPlugin());
 
 const BASE_URL = "https://eldorado.am";
 const LIST_PATH = "/am/audio-video/players-headsets/audio-headset";
-const PRODUCER_PARAM = "7338,586,585";
+// const PRODUCER_PARAM = "7338,586,585";
 
 async function extractProducts(page) {
   return page.evaluate(() => {
@@ -37,6 +37,7 @@ async function extractProducts(page) {
         cash_price,
         installment_price: null,
         source: "eldorado",
+    category: "speakers",
         url,
       });
     });
@@ -82,7 +83,7 @@ export async function scrapeEldoradoSpeakers() {
     const MAX_PAGES = 15; // hard safety cap regardless of anything else
 
     while (pageNum <= MAX_PAGES) {
-      const url = `${BASE_URL}${LIST_PATH}?ajaxscroll=1&el_producer=${encodeURIComponent(PRODUCER_PARAM)}&p=${pageNum}&_=${Date.now()}`;
+      const url = `${BASE_URL}${LIST_PATH}?ajaxscroll=1&p=${pageNum}&_=${Date.now()}`;
       console.log(`[eldorado-speakers] Loading page ${pageNum}...`);
 
       await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });

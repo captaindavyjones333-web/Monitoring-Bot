@@ -5,5 +5,6 @@ const CATEGORY_URLS = [
 ];
 
 export async function scrapeAllsellTablets() {
-  return crawlAllsellCategory(CATEGORY_URLS, "allsell-tablets");
+  const results = await crawlAllsellCategory(CATEGORY_URLS, "allsell-tablets");
+  return results.map((p) => ({ ...p, category: "tablets" }));
 }

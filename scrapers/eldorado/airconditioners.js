@@ -31,7 +31,8 @@ function extractProducts() {
 
     if (!cash_price) return;
 
-    results.push({ name, cash_price, installment_price: null, source: "eldorado", url });
+    results.push({ name, cash_price, installment_price: null, source: "eldorado",
+    category: "airconditioners", url });
   });
 
   return results;

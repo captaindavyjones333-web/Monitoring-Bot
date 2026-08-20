@@ -50,6 +50,7 @@ function normalize(raw) {
       installment_price: Number(raw.installment_price) || null,
       url: raw.slug ? `https://redstore.am/product/${raw.slug}` : null,
       specs,
+      category: "notebooks",
       scraped_at: new Date().toISOString(),
     },
   };

@@ -51,6 +51,7 @@ function parseSimpleProduct(baseName, html, url = null) {
     cash_price,
     installment_price,
     source: "yerevanmobile",
+    category: "headphones",
     url,
   };
 }

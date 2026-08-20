@@ -48,6 +48,7 @@ function extractListingProducts($) {
       installment_price: null,
       installation_price: 0, // vesta's standard installation is free
       source: "vesta",
+    category: "airconditioners",
       url: href,
     });
   });

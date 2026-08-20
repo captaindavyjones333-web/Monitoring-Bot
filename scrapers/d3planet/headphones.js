@@ -90,6 +90,7 @@ async function fetchProductPrice(puppeteerPage, baseName, url) {
       cash_price: price,
       installment_price,
       source: "3dplanet",
+    category: "headphones",
       url,
     };
   } catch (err) {

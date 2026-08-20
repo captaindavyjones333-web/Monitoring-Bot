@@ -18,6 +18,7 @@ import {
   buildACComparisons,
   splitAlertsByCategory,
 } from '../core/comparator.js';
+import { extractModelCode } from '../core/modelCode.js';
 
 // DB category slug -> which build*Comparisons() function handles it.
 // build*() returns [{ key, hasAlert, message }] — same objects comparator.js always returns.
@@ -35,20 +36,25 @@ const CATEGORY_HANDLERS = {
   speakers:           { build: (groups) => buildComparisons(groups, 'speakers') },
 };
 
+const DB_SLUG_BY_CATEGORY_KEY = {
+  airconditioners: "air-conditioners",
+};
+
 /**
  * Query the DB, run comparisons via the real comparator.js functions,
- * filter to hasAlert===true, apply brand-grouping + numbering via
- * splitAlertsByCategory(), then deliver each final string via sendFn.
+ * filter to hasAlert===true, and return grouped alerts matching splitAlertsByCategory() shape:
+ * { phones: [], tablets: [], watches: [], headphones: [], macbooks: [], speakers: [], tvs: [], dyson: [], gaming: [], airconditioners: [] }
  *
- * @param {((text: string) => Promise<void>) | null} sendFn
- *   Async callback that sends one Telegram message. null = CLI mode (print only).
- * @param {string | null} categoryFilter
- *   e.g. 'tvs'. null = all categories.
+ * @param {string | null} categoryFilter - e.g. 'phones', 'tvs', 'airconditioners'. null = all categories.
  */
-export async function runDbComparison(sendFn = null, categoryFilter = null) {
+export async function getDbComparisonGrouped(categoryFilter = null) {
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   const client = await pool.connect();
   try {
+    const targetDbSlug = categoryFilter
+      ? DB_SLUG_BY_CATEGORY_KEY[categoryFilter] || categoryFilter
+      : null;
+
     const productsRes = await client.query(
       `SELECT p.id, p.canonical_title, c.slug AS category_slug
        FROM products p
@@ -83,27 +89,42 @@ export async function runDbComparison(sendFn = null, categoryFilter = null) {
       const listings = listingsByProduct.get(p.id) ?? [];
       if (listings.length === 0) { skippedNoListings += 1; continue; }
 
-      const key = listings.find((l) => l.normalized_key)?.normalized_key ?? String(p.id);
+      const key = String(p.id);
 
       if (!groupsByCategory.has(p.category_slug)) groupsByCategory.set(p.category_slug, new Map());
       const categoryGroups = groupsByCategory.get(p.category_slug);
 
-      const sources = {};
+      // For macbooks, resolve model code from listings or product title
+      let modelCode = null;
+      if (p.category_slug === 'macbooks') {
+        modelCode = extractModelCode(p.canonical_title);
+        if (!modelCode) {
+          for (const l of listings) {
+            modelCode = extractModelCode(l.raw_title) || (l.normalized_key && l.normalized_key.length === 5 ? l.normalized_key : null);
+            if (modelCode) break;
+          }
+        }
+      }
+
+      if (!categoryGroups.has(key)) {
+        categoryGroups.set(key, { normalized: modelCode || key, code: modelCode || key, canonicalTitle: p.canonical_title, sources: {} });
+      }
+      const targetGroup = categoryGroups.get(key);
+
       for (const l of listings) {
-        const existing = sources[l.store_name];
+        const existing = targetGroup.sources[l.store_name];
         const newCash = l.cash_price != null ? Number(l.cash_price) : Infinity;
         if (existing) {
           const oldCash = existing.cash_price != null ? Number(existing.cash_price) : Infinity;
           if (newCash >= oldCash) continue;
         }
-        sources[l.store_name] = {
+        targetGroup.sources[l.store_name] = {
           name: l.raw_title,
           cash_price: l.cash_price != null ? Number(l.cash_price) : null,
           installment_price: l.installment_price != null ? Number(l.installment_price) : null,
           ...(l.installation_price != null ? { installation_price: Number(l.installation_price) } : {}),
         };
       }
-      categoryGroups.set(key, { normalized: key, code: key, sources });
     }
 
     if (skippedNoListings > 0) {
@@ -114,8 +135,9 @@ export async function runDbComparison(sendFn = null, categoryFilter = null) {
     // Each returns [{ key, hasAlert, message }] — collect them all into one flat array.
     const allComparisons = [];
     for (const [categorySlug, groups] of groupsByCategory) {
-      if (categoryFilter && categorySlug !== categoryFilter) continue;
+      if (targetDbSlug && categorySlug !== targetDbSlug && categorySlug !== categoryFilter) continue;
       const handler = CATEGORY_HANDLERS[categorySlug];
+      if (!handler) continue;
       try {
         const results = handler.build(groups);
         allComparisons.push(...results);
@@ -126,44 +148,56 @@ export async function runDbComparison(sendFn = null, categoryFilter = null) {
     }
 
     // ── Apply the EXACT same hasAlert filter + brand-grouping + numbering ──
-    // splitAlertsByCategory filters to hasAlert===true, sorts by brand/model,
-    // groups related items into one message, and prefixes with '1. ', '2. '...
-    // This produces strings identical to what sendJob.js + runComparison() sends.
     const grouped = splitAlertsByCategory(allComparisons);
-
-    // Flatten all categories into a single ordered list of sendable strings
-    const CATEGORY_ORDER = [
-      'phones', 'tablets', 'watches', 'headphones',
-      'macbooks', 'speakers', 'tvs', 'dyson', 'gaming', 'airconditioners',
-    ];
-    const allMessages = [];
-    for (const cat of CATEGORY_ORDER) {
-      const msgs = grouped[cat] ?? [];
-      for (const msg of msgs) {
-        allMessages.push({ category: cat, text: msg });
-      }
-    }
-
-    console.log(`\n[db-report] ${allMessages.length} alert message(s) to send`);
-
-    // ── Deliver via injected send callback (bot) or print (CLI) ─────────
-    if (typeof sendFn === 'function') {
-      for (const { text } of allMessages) {
-        await sendFn(text);
-      }
-      console.log('[db-report] All messages sent.');
-    } else {
-      for (const { category, text } of allMessages) {
-        console.log(`\n--- [${category}] ---`);
-        console.log(text);
-      }
-    }
-
-    return allMessages;
+    return grouped;
   } finally {
     client.release();
     await pool.end();
   }
+}
+
+/**
+ * Query the DB, run comparisons via the real comparator.js functions,
+ * filter to hasAlert===true, apply brand-grouping + numbering via
+ * splitAlertsByCategory(), then deliver each final string via sendFn.
+ *
+ * @param {((text: string) => Promise<void>) | null} sendFn
+ *   Async callback that sends one Telegram message. null = CLI mode (print only).
+ * @param {string | null} categoryFilter
+ *   e.g. 'tvs'. null = all categories.
+ */
+export async function runDbComparison(sendFn = null, categoryFilter = null) {
+  const grouped = await getDbComparisonGrouped(categoryFilter);
+
+  // Flatten all categories into a single ordered list of sendable strings
+  const CATEGORY_ORDER = [
+    'phones', 'tablets', 'watches', 'headphones',
+    'macbooks', 'speakers', 'tvs', 'dyson', 'gaming', 'airconditioners',
+  ];
+  const allMessages = [];
+  for (const cat of CATEGORY_ORDER) {
+    const msgs = grouped[cat] ?? [];
+    for (const msg of msgs) {
+      allMessages.push({ category: cat, text: msg });
+    }
+  }
+
+  console.log(`\n[db-report] ${allMessages.length} alert message(s) to send`);
+
+  // ── Deliver via injected send callback (bot) or print (CLI) ─────────
+  if (typeof sendFn === 'function') {
+    for (const { text } of allMessages) {
+      await sendFn(text);
+    }
+    console.log('[db-report] All messages sent.');
+  } else {
+    for (const { category, text } of allMessages) {
+      console.log(`\n--- [${category}] ---`);
+      console.log(text);
+    }
+  }
+
+  return allMessages;
 }
 
 // CLI entry-point - only executes when run directly via node

@@ -2,7 +2,7 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 
 const BASE_URL = "https://vesta.am";
-const LIST_URL = `${BASE_URL}/herustacuycner?tf_ff=23`;
+const LIST_URL = `${BASE_URL}/herustacuycner`;
 const CATEGORY_PATH = "/herustacuycner";
 
 const HEADERS = {
@@ -35,6 +35,7 @@ function extractListingProducts($) {
       cash_price,
       installment_price: null,
       source: "vesta",
+    category: "tvs",
       url: href,
     });
   });

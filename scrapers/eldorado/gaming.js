@@ -31,7 +31,8 @@ async function extractProducts(page) {
 
       if (!cash_price) return;
 
-      results.push({ name, cash_price, installment_price: null, source: "eldorado", url });
+      results.push({ name, cash_price, installment_price: null, source: "eldorado",
+    category: "gaming", url });
     });
 
     return results;

@@ -4,11 +4,7 @@ import { isConsoleProduct } from "../../core/gamingFilter.js";
 
 const BASE_URL = "https://www.yerevanmobile.am";
 const LIST_URLS = [
-  `${BASE_URL}/am/gaming-systems/nintendo.html`,
-  `${BASE_URL}/am/gaming-systems/sony-playstation.html`,
-  `${BASE_URL}/am/gaming-systems/virtual-glasses.html`,
-  `${BASE_URL}/am/valve-steam-deck-oled.html`,
-  `${BASE_URL}/am/catalogsearch/result/?q=lenovo+legion`,
+  "https://www.yerevanmobile.am/am/catalog/category/view/id/168/",
 ];
 
 const HEADERS = {
@@ -57,6 +53,7 @@ function parseSimpleProduct(baseName, html, url = null) {
     cash_price,
     installment_price,
     source: "yerevanmobile",
+    category: "gaming",
     url,
   };
 }

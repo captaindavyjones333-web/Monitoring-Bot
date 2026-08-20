@@ -107,6 +107,7 @@ async function fetchProductDetail(page, listingName, url, listingCashPrice) {
       cash_price: cashPrice,
       installment_price: installmentPrice,
       source: "mobilecentre",
+    category: "speakers",
       url,
     };
   } catch (err) {

@@ -22,6 +22,7 @@ function normalize(raw) {
     installment_price: Number(raw.installment_price) || null,
     installation_price: getInstallationPrice(raw),
     source: "redstore",
+    category: "airconditioners",
     url: raw.slug ? `https://redstore.am/product/${raw.slug}` : null,
   };
 }

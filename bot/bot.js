@@ -2,24 +2,20 @@ import TelegramBot from "node-telegram-bot-api";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import {
-  runScraping,
-  runWatchesScraping,
-  runHeadphonesScraping,
-  runMacbooksScraping,
-  runSpeakersScraping,
-  runTvsScraping,
-  runDysonScraping,
-  runGamingScraping,
-  runAirConditionersScraping,
-} from "../jobs/scrapeJob.js";
+import { runFullScraping } from "../jobs/scrapeJob.js";
 import { runSendJob } from "../jobs/sendJob.js";
-import { runDbComparison } from "../migration/generate-comparison-report.js";
+import {
+  runDbComparison,
+  getDbComparisonGrouped,
+} from "../migration/generate-comparison-report.js";
 import { loadAllCaches } from "../core/cache_manager.js";
 import { groupByNormalizedName } from "../core/normalizer.js";
 import {
   CATEGORY_CONFIG,
   buildCategoryMenu,
+  buildComparisonMainMenu,
+  getCategoryMenuText,
+  getMainMenuText,
   filterMessagesByBrand,
 } from "../core/categoryMenu.js";
 import { searchProducts } from "../core/search.js";
@@ -41,7 +37,65 @@ if (!ADMIN_ID) throw new Error("ADMIN_ID is missing in .env");
 
 export const bot = new TelegramBot(TOKEN, { polling: true });
 
-// ─── Users storage ────────────────────────────────────────────────────────────
+const PREFERENCES_FILE = path.resolve(
+  __dirname,
+  "../data/user_preferences.json",
+);
+
+// ─── Users storage & Mode preferences ─────────────────────────────────────────
+
+let memoryPreferences = null;
+
+function loadPreferences() {
+  if (memoryPreferences !== null) return memoryPreferences;
+  if (!fs.existsSync(PREFERENCES_FILE)) {
+    memoryPreferences = {};
+    return memoryPreferences;
+  }
+  try {
+    const content = fs.readFileSync(PREFERENCES_FILE, "utf-8").trim();
+    if (!content) {
+      memoryPreferences = {};
+      return memoryPreferences;
+    }
+    const parsed = JSON.parse(content);
+    memoryPreferences = typeof parsed === "object" && parsed !== null ? parsed : {};
+    return memoryPreferences;
+  } catch {
+    memoryPreferences = {};
+    return memoryPreferences;
+  }
+}
+
+function savePreferences(prefs) {
+  memoryPreferences = prefs;
+  try {
+    const dir = path.dirname(PREFERENCES_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(PREFERENCES_FILE, JSON.stringify(prefs, null, 2));
+  } catch (err) {
+    console.error("[bot] ❌ Failed to save user preferences:", err.message);
+  }
+}
+
+function getUserMode(userId) {
+  const uid = String(userId);
+  const prefs = loadPreferences();
+  const mode = prefs[uid]?.comparisonMode;
+  if (mode === "cache" || mode === "db") {
+    return mode;
+  }
+  return "cache";
+}
+
+function setUserMode(userId, mode) {
+  const uid = String(userId);
+  const safeMode = mode === "db" ? "db" : "cache";
+  const prefs = loadPreferences();
+  if (!prefs[uid]) prefs[uid] = {};
+  prefs[uid].comparisonMode = safeMode;
+  savePreferences(prefs);
+}
 
 function loadUsers() {
   if (!fs.existsSync(USERS_FILE)) return {};
@@ -74,23 +128,11 @@ function isAdmin(userId) {
 
 // ─── Keyboards ────────────────────────────────────────────────────────────────
 
-const CATEGORY_BUTTONS = [
-  [{ text: "📱 Հեռախոսներ" }, { text: "📟 Պլանշետներ" }],
-  [{ text: "⌚ Ժամացույցներ" }, { text: "🎧 Ականջակալներ" }],
-  [{ text: "💻 Macbook" }, { text: "🔊 Խոսափողեր" }],
-  [{ text: "📺 Հեռուստացույցներ" }, { text: "💇 Dyson" }],
-  [{ text: "🎮 Gaming" }],
-  [{ text: "❄️ Օդորակիչներ" }],
-  [{ text: "🔍 Փնտրել" }],
-];
-
 const MAIN_KEYBOARD = {
   reply_markup: {
     keyboard: [
-      [{ text: "🔄 Լրիվ սկանավորում" }],
-      ...CATEGORY_BUTTONS,
-      [{ text: "👥 Օգտատերեր" }],
-      [{ text: "🧪 DB Comparison" }],
+      [{ text: "📊 Համեմատություն" }, { text: "🔄 Լրիվ սկանավորում" }],
+      [{ text: "🔍 Փնտրել" }, { text: "👥 Օգտատերեր" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -100,8 +142,8 @@ const MAIN_KEYBOARD = {
 const USER_KEYBOARD = {
   reply_markup: {
     keyboard: [
-      [{ text: "🔄 Լրիվ սկանավորում" }],
-      ...CATEGORY_BUTTONS,
+      [{ text: "📊 Համեմատություն" }, { text: "🔄 Լրիվ սկանավորում" }],
+      [{ text: "🔍 Փնտրել" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -292,7 +334,7 @@ bot.on("callback_query", async (query) => {
     return;
   }
 
-  // Category filter actions (cache-only, no scraping)
+  // Category filter actions & mode switching
   await bot.answerCallbackQuery(query.id).catch(() => {});
 
   if (!isApproved(userId)) {
@@ -300,33 +342,122 @@ bot.on("callback_query", async (query) => {
     return;
   }
 
-  if (data === "cat|back") {
+  // Close button
+  if (data === "cat|close") {
     await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
     return;
   }
 
-  const [, categoryKey, mode, brandIndex] = data.split("|");
+  // Back button
+  if (data.startsWith("cat|back")) {
+    const [, , backMode] = data.split("|");
+    const mode = backMode || getUserMode(userId);
+    try {
+      await bot.editMessageText(getMainMenuText(mode), {
+        chat_id: query.message.chat.id,
+        message_id: query.message.message_id,
+        parse_mode: "Markdown",
+        ...buildComparisonMainMenu(mode),
+      });
+    } catch {
+      await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+    }
+    return;
+  }
+
+  // Mode toggle / switch button: mode|set|<targetMode>|<context>
+  if (data.startsWith("mode|set|")) {
+    const [, , targetMode, context] = data.split("|");
+    if (targetMode === "cache" || targetMode === "db") {
+      setUserMode(userId, targetMode);
+
+      if (context === "main") {
+        await bot.editMessageText(getMainMenuText(targetMode), {
+          chat_id: query.message.chat.id,
+          message_id: query.message.message_id,
+          parse_mode: "Markdown",
+          ...buildComparisonMainMenu(targetMode),
+        }).catch(() => {});
+      } else if (CATEGORY_CONFIG[context]) {
+        await bot.editMessageText(getCategoryMenuText(context, targetMode), {
+          chat_id: query.message.chat.id,
+          message_id: query.message.message_id,
+          parse_mode: "Markdown",
+          ...buildCategoryMenu(context, targetMode),
+        }).catch(() => {});
+      }
+    }
+    return;
+  }
+
+  // Open category brand menu from main comparison menu: cat|open|<mode>|<categoryKey>
+  if (data.startsWith("cat|open|")) {
+    const [, , mode, categoryKey] = data.split("|");
+    if (CATEGORY_CONFIG[categoryKey]) {
+      const selectedMode = mode || getUserMode(userId);
+      setUserMode(userId, selectedMode);
+      await bot.editMessageText(getCategoryMenuText(categoryKey, selectedMode), {
+        chat_id: query.message.chat.id,
+        message_id: query.message.message_id,
+        parse_mode: "Markdown",
+        ...buildCategoryMenu(categoryKey, selectedMode),
+      }).catch(() => {});
+    }
+    return;
+  }
+
+  // Comparison execution:
+  // Format 1: cat|<mode>|<categoryKey>|brand|<brandIndex>
+  // Format 2: cat|<mode>|<categoryKey>|all
+  // Format 3 (legacy): cat|<categoryKey>|brand|<brandIndex>
+  // Format 4 (legacy): cat|<categoryKey>|all
+  let mode = getUserMode(userId);
+  let categoryKey = null;
+  let action = null;
+  let brandIndex = null;
+
+  const parts = data.split("|");
+  if (parts[1] === "cache" || parts[1] === "db") {
+    mode = parts[1];
+    categoryKey = parts[2];
+    action = parts[3]; // 'brand' or 'all'
+    brandIndex = parts[4] != null && parts[4] !== "" ? Number(parts[4]) : null;
+  } else {
+    categoryKey = parts[1];
+    action = parts[2];
+    brandIndex = parts[3] != null && parts[3] !== "" ? Number(parts[3]) : null;
+  }
+
   if (!CATEGORY_CONFIG[categoryKey]) return;
 
+  if (mode) setUserMode(userId, mode);
+
+  await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+
+  const modeUpper = mode.toUpperCase();
+  const catLabel = CATEGORY_CONFIG[categoryKey].label;
+
   try {
-    const result = await runSendJob(false, false);
+    const result =
+      mode === "db"
+        ? await getDbComparisonGrouped(categoryKey)
+        : await runSendJob(false, false);
+
     const categoryMessages = result[categoryKey] || [];
 
     const messages =
-      mode === "brand"
+      action === "brand" && brandIndex != null
         ? filterMessagesByBrand(
             categoryMessages,
             categoryKey,
-            Number(brandIndex),
+            brandIndex,
           )
         : categoryMessages;
-
-    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
 
     if (messages.length === 0) {
       await bot.sendMessage(
         userId,
-        "✅ Գնային անհամապատասխանություններ չկան",
+        `✅ [${modeUpper}] Գնային անհամապատասխանություններ չկան (${catLabel})`,
         USER_KEYBOARD,
       );
       return;
@@ -334,13 +465,17 @@ bot.on("callback_query", async (query) => {
 
     await bot.sendMessage(
       userId,
-      `🚨 ${messages.length} անհամապատասխանություն հայտնաբերվել է`,
+      `🚨 [${modeUpper}] ${messages.length} անհամապատասխանություն հայտնաբերվել է (${catLabel})`,
       USER_KEYBOARD,
     );
     await sendAlerts(messages, userId);
   } catch (err) {
-    console.error("[bot] ❌ Category check failed:", err.message);
-    await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    console.error(`[bot] ❌ ${modeUpper} Category check failed:`, err.message);
+    await bot.sendMessage(
+      userId,
+      `❌ [${modeUpper}] Սխալ: ` + err.message,
+      USER_KEYBOARD,
+    );
   }
 });
 
@@ -461,48 +596,30 @@ bot.on("message", async (msg) => {
     return;
   }
 
-  // ─── DB Comparison (admin-only test of the DB-based pipeline) ───────────
-  if (text === "🧪 DB Comparison") {
-    if (!isAdmin(userId)) return;
-    await bot.sendMessage(userId, "🗄️ Գործարկում եմ DB-based comparison...");
-    try {
-      const allMessages = await runDbComparison(
-        async (msgText) => {
-          await bot.sendMessage(userId, msgText, { parse_mode: "Markdown" });
-        },
-      );
-      if (allMessages.length === 0) {
-        await bot.sendMessage(userId, "✅ DB-ից գնային անհամապատասխանություններ չկան", MAIN_KEYBOARD);
-      } else {
-        await bot.sendMessage(
-          userId,
-          `🗄️ DB comparison ավարտված է — ${allMessages.length} հաղորդագրություն ուղարկված`,
-          MAIN_KEYBOARD,
-        );
-      }
-    } catch (err) {
-      console.error("[bot] ❌ DB Comparison failed:", err.message);
-      await bot.sendMessage(userId, "❌ DB Comparison սխալ: " + err.message, MAIN_KEYBOARD);
-    }
+  // ─── Main Comparison Menu (Cache / DB selection & Category list) ─────
+  if (text === "📊 Համեմատություն" || text === "🧪 DB Comparison") {
+    const userMode = text === "🧪 DB Comparison" ? "db" : getUserMode(userId);
+    if (text === "🧪 DB Comparison") setUserMode(userId, "db");
+
+    await bot.sendMessage(
+      userId,
+      getMainMenuText(userMode),
+      {
+        parse_mode: "Markdown",
+        ...buildComparisonMainMenu(userMode),
+      },
+    );
     return;
   }
 
-  // ─── Full scan: re-scrapes every category, then reports a summary ───────
+  // ─── Full scan: re-scrapes every category, runs post-scrape pipeline, then reports a summary ───────
   if (text === "🔄 Լրիվ սկանավորում") {
     await bot.sendMessage(
       userId,
       "🔄 Սկանավորում եմ բոլոր կայքերը, խնդրում եմ սպասել...",
     );
     try {
-      await runScraping();
-      await runWatchesScraping();
-      await runHeadphonesScraping();
-      await runMacbooksScraping();
-      await runSpeakersScraping();
-      await runTvsScraping();
-      await runDysonScraping();
-      await runGamingScraping();
-      await runAirConditionersScraping();
+      await runFullScraping();
 
       const result = await runSendJob(false, false);
       const total = Object.values(result).reduce(
@@ -540,13 +657,17 @@ bot.on("message", async (msg) => {
     return;
   }
 
-  // ─── Generic category button: cache-only, shows brand-filter menu ───────
+  // ─── Generic category button: shows brand-filter menu with user mode ───────
   if (CATEGORY_LABEL_TO_KEY[text]) {
     const categoryKey = CATEGORY_LABEL_TO_KEY[text];
+    const userMode = getUserMode(userId);
     await bot.sendMessage(
       userId,
-      `${text} — ընտրեք բրենդը կամ ստուգեք բոլորը.`,
-      buildCategoryMenu(categoryKey),
+      getCategoryMenuText(categoryKey, userMode),
+      {
+        parse_mode: "Markdown",
+        ...buildCategoryMenu(categoryKey, userMode),
+      },
     );
     return;
   }

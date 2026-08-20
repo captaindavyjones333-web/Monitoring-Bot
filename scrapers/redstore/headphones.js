@@ -4,6 +4,16 @@ import axios from "axios";
 const BRAND_IDS = {
   samsung: 295,
   apple: 294,
+  xiaomi: 296,
+  sony: 303,
+  oneplus: 304,
+  jbl: 307,
+  beats: 330,
+  bose: 331,
+  logitech: 358,
+  belkin: 427,
+  nothing: 478,
+  dyson: 479,
 };
 
 function normalize(raw) {
@@ -13,6 +23,7 @@ function normalize(raw) {
     cash_price: Number(raw.cash_price) || null,
     installment_price: Number(raw.installment_price) || null,
     source: "redstore",
+    category: "headphones",
     url: raw.slug ? `https://redstore.am/product/${raw.slug}` : null,
   };
 }

@@ -39,6 +39,7 @@ function normalize(raw) {
     cash_price: Number(raw.pricing?.selling_price) || null,
     installment_price: null,
     source: "vlv",
+    category: "tvs",
     url: `https://vlv.am/Product/${Number(raw.seller_id) || ""}`,
   };
 }

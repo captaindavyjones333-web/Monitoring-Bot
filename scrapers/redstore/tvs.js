@@ -6,6 +6,8 @@ const BRAND_IDS = {
   xiaomi: 296,
   samsung: 295,
   evvoli: 327,
+  sony: 303,
+  lg: 306,
 };
 
 async function fetchBrandPages(brandId) {
@@ -44,6 +46,7 @@ function normalize(raw) {
     cash_price: Number(raw.cash_price) || null,
     installment_price: Number(raw.installment_price) || null,
     source: "redstore",
+    category: "tvs",
     url: raw.slug ? `https://redstore.am/product/${raw.slug}` : null,
   };
 }

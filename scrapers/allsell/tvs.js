@@ -62,7 +62,8 @@ function parseSimpleProduct(baseName, html, url = null) {
     ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
     : null;
 
-  return { name: baseName, cash_price, installment_price, source: "allsell", url };
+  return { name: baseName, cash_price, installment_price, source: "allsell",
+    category: "tvs", url };
 }
 
 async function fetchProductPrice(baseName, url) {

@@ -73,7 +73,8 @@ function parseSimpleProduct(baseName, html, listingInstallment, url = null) {
   // Prefer the value scraped from the listing page if the detail page didn't yield one
   if (installment_price == null) installment_price = listingInstallment ?? null;
 
-  return { name: baseName, cash_price, installment_price, source: "allsell", url };
+  return { name: baseName, cash_price, installment_price, source: "allsell",
+    category: "dyson", url };
 }
 
 async function fetchProductPrice(baseName, url, listingInstallment) {

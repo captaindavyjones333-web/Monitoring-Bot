@@ -19,12 +19,14 @@ export const CATEGORY_CONFIG = {
       { label: "iPad", match: /ipad/i },
       { label: "Samsung", match: /samsung/i },
       { label: "Xiaomi", match: /xiaomi|redmi/i },
+      { label: "Amazon", match: /amazon|\bfire\s*(hd|hdx)?\s*\d/i },
+      { label: "reMarkable", match: /remarkable/i },
     ],
   },
   watches: {
     label: "⌚ Ժամացույցներ",
     brands: [
-      { label: "Apple", match: /apple/i },
+      { label: "Apple", match: /apple|i\s*watch/i },
       { label: "Samsung", match: /samsung/i },
       { label: "Xiaomi", match: /xiaomi/i },
     ],
@@ -33,8 +35,17 @@ export const CATEGORY_CONFIG = {
     label: "🎧 Ականջակալներ",
     brands: [
       { label: "AirPods", match: /airpods/i },
-      { label: "Galaxy Buds", match: /buds/i },
+      { label: "Galaxy Buds", match: /galaxy\s*buds/i },
       { label: "Marshall", match: /marshall/i },
+      { label: "Sony", match: /\bsony\b/i },
+      { label: "Xiaomi", match: /\bxiaomi\b/i },
+      { label: "OnePlus", match: /oneplus/i },
+      { label: "Nothing", match: /nothing/i },
+      { label: "Logitech", match: /logitech/i },
+      { label: "JBL", match: /\bjbl\b/i },
+      { label: "Bose", match: /\bbose\b/i },
+      { label: "Belkin", match: /belkin/i },
+      { label: "Beats", match: /\bbeats\b/i },
     ],
   },
   macbooks: {
@@ -46,17 +57,24 @@ export const CATEGORY_CONFIG = {
     ],
   },
   speakers: {
-    label: "🔊 Խոսափողեր",
+    label: "🔊 Բարձրախոսներ",
     brands: [
-      { label: "JBL", match: /jbl/i },
+      { label: "JBL", match: /\bjbl\b/i },
       { label: "Marshall", match: /marshall/i },
       { label: "Harman Kardon", match: /harman/i },
+      { label: "Bose", match: /\bbose\b/i },
+      { label: "Beats", match: /\bbeats\b/i },
+      { label: "Sony", match: /\bsony\b/i },
+      { label: "Yandex", match: /yandex|станция/i },
+      { label: "Xiaomi", match: /\bxiaomi\b/i },
     ],
   },
   tvs: {
     label: "📺 Հեռուստացույցներ",
     brands: [
       { label: "Samsung", match: /samsung/i },
+      { label: "Sony", match: /\bsony\b/i },
+      { label: "LG", match: /\blg\b/i },
       { label: "Xiaomi", match: /xiaomi/i },
       { label: "Evvoli", match: /evvoli/i },
     ],
@@ -72,7 +90,11 @@ export const CATEGORY_CONFIG = {
       { label: "Nintendo", match: /nintendo|switch/i },
       { label: "Xbox", match: /xbox/i },
       { label: "Meta", match: /meta\s*quest/i },
-      { label: "Այլ", match: /^(?!.*(ps5|playstation|nintendo|switch|xbox|meta\s*quest)).+/i },
+      { label: "Logitech", match: /logitech/i },
+      { label: "PXN Racing", match: /\bpxn\b/i },
+      { label: "Thrustmaster", match: /thrustmaster/i },
+      { label: "Hori", match: /\bhori\b/i },
+      { label: "Այլ", match: /^(?!.*(ps5|playstation|nintendo|switch|xbox|meta\s*quest|logitech|pxn|thrustmaster|hori)).+/i },
     ],
   },
   airconditioners: {
@@ -85,22 +107,95 @@ export const CATEGORY_CONFIG = {
   },
 };
 
-export function buildCategoryMenu(categoryKey) {
+export function getCategoryMenuText(categoryKey, mode = "cache") {
   const config = CATEGORY_CONFIG[categoryKey];
-  const buttons = config.brands.map((b, i) => [
-    { text: b.label, callback_data: `cat|${categoryKey}|brand|${i}` },
-  ]);
+  const modeLabel = mode === "db" ? "🗄️ DB" : "💾 Cache";
+  return `📊 *Comparison Mode:* ${modeLabel}\n${config?.label || categoryKey} — ընտրեք բրենդը կամ ստուգեք բոլորը.`;
+}
+
+export function getMainMenuText(mode = "cache") {
+  const modeLabel = mode === "db" ? "🗄️ DB" : "💾 Cache";
+  return `📊 *Comparison Mode:* ${modeLabel}\nԸնտրեք կատեգորիան համեմատության համար.`;
+}
+
+export function buildComparisonMainMenu(mode = "cache") {
+  const isDb = mode === "db";
+
+  // Top mode selector row with explicit [💾 Cache] and [🗄️ DB] buttons indicating active state
+  const modeSelectorRow = [
+    {
+      text: isDb ? "💾 Cache" : "✅ 💾 Cache (Active)",
+      callback_data: "mode|set|cache|main",
+    },
+    {
+      text: isDb ? "✅ 🗄️ DB (Active)" : "🗄️ DB",
+      callback_data: "mode|set|db|main",
+    },
+  ];
+
+  const buttons = [modeSelectorRow];
+
+  const catKeys = Object.keys(CATEGORY_CONFIG);
+  for (let i = 0; i < catKeys.length; i += 2) {
+    const row = [
+      {
+        text: CATEGORY_CONFIG[catKeys[i]].label,
+        callback_data: `cat|open|${mode}|${catKeys[i]}`,
+      },
+    ];
+    if (catKeys[i + 1]) {
+      row.push({
+        text: CATEGORY_CONFIG[catKeys[i + 1]].label,
+        callback_data: `cat|open|${mode}|${catKeys[i + 1]}`,
+      });
+    }
+    buttons.push(row);
+  }
+
+  buttons.push([{ text: "🔙 Փակել", callback_data: "cat|close" }]);
+
+  return { reply_markup: { inline_keyboard: buttons } };
+}
+
+export function buildCategoryMenu(categoryKey, mode = "cache") {
+  const config = CATEGORY_CONFIG[categoryKey];
+  const isDb = mode === "db";
+
+  // Mode switcher row within category view
+  const modeSelectorRow = [
+    {
+      text: isDb ? "💾 Cache" : "✅ 💾 Cache (Active)",
+      callback_data: `mode|set|cache|${categoryKey}`,
+    },
+    {
+      text: isDb ? "✅ 🗄️ DB (Active)" : "🗄️ DB",
+      callback_data: `mode|set|db|${categoryKey}`,
+    },
+  ];
+
+  const buttons = [modeSelectorRow];
+
+  if (config && Array.isArray(config.brands)) {
+    for (const [i, b] of config.brands.entries()) {
+      buttons.push([
+        { text: b.label, callback_data: `cat|${mode}|${categoryKey}|brand|${i}` },
+      ]);
+    }
+  }
+
   buttons.push([
-    { text: "✅ Ստուգել բոլորը", callback_data: `cat|${categoryKey}|all` },
+    { text: "✅ Ստուգել բոլորը", callback_data: `cat|${mode}|${categoryKey}|all` },
   ]);
-  buttons.push([{ text: "🔙 Հետ", callback_data: `cat|back` }]);
+  buttons.push([{ text: "🔙 Հետ", callback_data: `cat|back|${mode}` }]);
+
   return { reply_markup: { inline_keyboard: buttons } };
 }
 
 export function filterMessagesByBrand(messages, categoryKey, brandIndex) {
   const config = CATEGORY_CONFIG[categoryKey];
-  const brand = config.brands[brandIndex];
+  const brand = config?.brands?.[brandIndex];
   if (!brand) return messages;
   const filtered = messages.filter((m) => brand.match.test(m));
   return filtered.map((msg, i) => msg.replace(/^\d+\.\s*/, `${i + 1}. `));
 }
+

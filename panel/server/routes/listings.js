@@ -74,7 +74,7 @@ listingsRouter.post("/:id/unlink", async (req, res, next) => {
 
     const listingResult = await client.query(
       `SELECT sl.id, sl.product_id, sl.raw_title, sl.normalized_title,
-              p.category_id, p.brand
+              p.category_id, p.brand, p.canonical_title AS parent_title
        FROM store_listings sl
        LEFT JOIN products p ON p.id = sl.product_id
        WHERE sl.id = $1`,
@@ -87,7 +87,8 @@ listingsRouter.post("/:id/unlink", async (req, res, next) => {
     const listing = listingResult.rows[0];
 
     const previousProductId = listing.product_id;
-    const title = (listing.normalized_title || listing.raw_title || "").trim();
+    // Use the listing's raw_title as the new group title
+    const title = (listing.raw_title || listing.normalized_title || "").trim() || listing.parent_title || "";
 
     // 1. Create a new independent product for this unlinked listing
     const productRes = await client.query(

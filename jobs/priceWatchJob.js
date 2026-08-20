@@ -2,17 +2,7 @@ import { loadAllCaches } from "../core/cache_manager.js";
 import { saveSnapshot, loadSnapshot, diffProducts } from "../core/price_snapshot.js";
 import { runComparison, SOURCE_LABELS } from "../core/comparator.js";
 import { normalizeName } from "../core/normalizer.js";
-import {
-  runScraping,
-  runWatchesScraping,
-  runHeadphonesScraping,
-  runMacbooksScraping,
-  runSpeakersScraping,
-  runTvsScraping,
-  runDysonScraping,
-  runGamingScraping,
-  runAirConditionersScraping,
-} from "./scrapeJob.js";
+import { runFullScraping } from "./scrapeJob.js";
 
 const fmt = (n) =>
   n != null ? n.toLocaleString("ru-RU").replace(/,/g, " ") : "—";
@@ -191,17 +181,9 @@ export async function runPriceWatchJob() {
       )
     : new Set();
 
-  // Run full scrape to update caches
+  // Run full scrape to update caches and execute post-scrape DB pipeline
   console.log("[priceWatch] 🌐 Running full scrape...");
-  await runScraping();
-  await runWatchesScraping();
-  await runHeadphonesScraping();
-  await runMacbooksScraping();
-  await runSpeakersScraping();
-  await runTvsScraping();
-  await runDysonScraping();
-  await runGamingScraping();
-  await runAirConditionersScraping();
+  await runFullScraping();
   console.log("[priceWatch] ✅ Scrape complete");
 
   // Load freshly scraped products

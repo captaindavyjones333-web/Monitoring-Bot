@@ -49,7 +49,8 @@ function extractListingProducts($) {
     const code = extractCodeFromSlug(url);
     const name = code ? `${rawName} ${code}` : rawName;
 
-    products.push({ name, url, cash_price, source: "ispace" });
+    products.push({ name, url, cash_price, source: "ispace",
+    category: "macbooks" });
   });
 
   return products;

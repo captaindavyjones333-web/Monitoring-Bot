@@ -78,6 +78,7 @@ function parseSimpleProduct(baseName, html, url = null) {
     installment_price,
     installation_price,
     source: "allsell",
+    category: "airconditioners",
     url,
   };
 }

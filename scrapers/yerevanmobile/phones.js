@@ -18,5 +18,6 @@ const MANUAL_URLS = [
 ];
 
 export async function scrapeYerevanMobilePhones() {
-  return crawlYerevanMobileCategory(LIST_URLS, "ym-phones", MANUAL_URLS);
+  const results = await crawlYerevanMobileCategory(LIST_URLS, "ym-phones", MANUAL_URLS);
+  return results.map((p) => ({ ...p, category: "phones" }));
 }

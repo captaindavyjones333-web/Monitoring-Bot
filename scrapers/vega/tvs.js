@@ -3,7 +3,7 @@ import * as cheerio from "cheerio";
 
 const BASE_URL = "https://vega.am";
 const LIST_URL =
-  "https://vega.am/home-appliances/audio-video-and-photo/tv/?ocf=F1S0V124";
+  "https://vega.am/home-appliances/audio-video-and-photo/tv";
 
 const HEADERS = {
   "User-Agent":
@@ -82,6 +82,7 @@ export async function scrapeVegaTvs() {
     cash_price: p.cash_price,
     installment_price: null, // vega has no installment pricing
     source: "vega",
+    category: "tvs",
     url: p.url,
   }));
 

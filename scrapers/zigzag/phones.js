@@ -122,6 +122,7 @@ export async function scrapeZigzagPhones() {
           cash_price,
           installment_price: null, // zigzag has no installment pricing
           source: "zigzag",
+    category: "phones",
           url,
         });
       } catch (err) {
