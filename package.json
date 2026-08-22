@@ -26,6 +26,7 @@
     "fs-extra": "^11.3.5",
     "node-cron": "^4.5.0",
     "node-telegram-bot-api": "^1.1.2",
+    "pg": "^8.23.0",
     "puppeteer": "^25.2.1",
     "puppeteer-core": "^25.2.1",
     "puppeteer-extra": "^3.3.6",
