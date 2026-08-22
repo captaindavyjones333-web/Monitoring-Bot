@@ -94,7 +94,11 @@ export const CATEGORY_CONFIG = {
       { label: "PXN Racing", match: /\bpxn\b/i },
       { label: "Thrustmaster", match: /thrustmaster/i },
       { label: "Hori", match: /\bhori\b/i },
-      { label: "Այլ", match: /^(?!.*(ps5|playstation|nintendo|switch|xbox|meta\s*quest|logitech|pxn|thrustmaster|hori)).+/i },
+      {
+        label: "Այլ",
+        match:
+          /^(?!.*(ps5|playstation|nintendo|switch|xbox|meta\s*quest|logitech|pxn|thrustmaster|hori)).+/i,
+      },
     ],
   },
   airconditioners: {
@@ -107,10 +111,29 @@ export const CATEGORY_CONFIG = {
   },
 };
 
+import {
+  getPhoneGroupKey,
+  getPhoneSubgroupLabel,
+  getDysonGroupKey,
+  getDysonSubgroupLabel,
+} from "./comparator.js";
+
 export function getCategoryMenuText(categoryKey, mode = "cache") {
   const config = CATEGORY_CONFIG[categoryKey];
   const modeLabel = mode === "db" ? "🗄️ DB" : "💾 Cache";
   return `📊 *Comparison Mode:* ${modeLabel}\n${config?.label || categoryKey} — ընտրեք բրենդը կամ ստուգեք բոլորը.`;
+}
+
+export function getPhoneSubgroupMenuText(brandIndex, mode = "cache") {
+  const brand = CATEGORY_CONFIG.phones?.brands?.[brandIndex];
+  const brandLabel = brand?.label || "Phones";
+  const modeLabel = mode === "db" ? "🗄️ DB" : "💾 Cache";
+  return `📊 *Comparison Mode:* ${modeLabel}\n📱 *${brandLabel}* — ընտրեք խումբը կամ ստուգեք բոլորը.`;
+}
+
+export function getDysonSubgroupMenuText(mode = "cache") {
+  const modeLabel = mode === "db" ? "🗄️ DB" : "💾 Cache";
+  return `📊 *Comparison Mode:* ${modeLabel}\n💇 *Dyson* — ընտրեք սերիան կամ ստուգեք բոլորը.`;
 }
 
 export function getMainMenuText(mode = "cache") {
@@ -178,24 +201,154 @@ export function buildCategoryMenu(categoryKey, mode = "cache") {
   if (config && Array.isArray(config.brands)) {
     for (const [i, b] of config.brands.entries()) {
       buttons.push([
-        { text: b.label, callback_data: `cat|${mode}|${categoryKey}|brand|${i}` },
+        {
+          text: b.label,
+          callback_data: `cat|${mode}|${categoryKey}|brand|${i}`,
+        },
       ]);
     }
   }
 
   buttons.push([
-    { text: "✅ Ստուգել բոլորը", callback_data: `cat|${mode}|${categoryKey}|all` },
+    {
+      text: "✅ Ստուգել բոլորը",
+      callback_data: `cat|${mode}|${categoryKey}|all`,
+    },
   ]);
   buttons.push([{ text: "🔙 Հետ", callback_data: `cat|back|${mode}` }]);
 
   return { reply_markup: { inline_keyboard: buttons } };
 }
 
+export function buildPhoneSubgroupMenu(
+  brandIndex,
+  availableSubgroups = [],
+  mode = "cache",
+) {
+  const isDb = mode === "db";
+  const modeSelectorRow = [
+    {
+      text: isDb ? "💾 Cache" : "✅ 💾 Cache (Active)",
+      callback_data: `mode|set|cache|phones_brand_${brandIndex}`,
+    },
+    {
+      text: isDb ? "✅ 🗄️ DB (Active)" : "🗄️ DB",
+      callback_data: `mode|set|db|phones_brand_${brandIndex}`,
+    },
+  ];
+
+  const buttons = [modeSelectorRow];
+
+  const groupButtons = availableSubgroups.map((sg) => ({
+    text: sg.label,
+    callback_data: `cat|${mode}|phones|subgroup|${brandIndex}|${sg.groupKey}`,
+  }));
+
+  for (let i = 0; i < groupButtons.length; i += 2) {
+    if (groupButtons[i + 1]) {
+      buttons.push([groupButtons[i], groupButtons[i + 1]]);
+    } else {
+      buttons.push([groupButtons[i]]);
+    }
+  }
+
+  buttons.push([
+    {
+      text: "✅ Ստուգել բոլորը",
+      callback_data: `cat|${mode}|phones|suball|${brandIndex}`,
+    },
+  ]);
+  buttons.push([{ text: "🔙 Հետ", callback_data: `cat|open|${mode}|phones` }]);
+
+  return { reply_markup: { inline_keyboard: buttons } };
+}
+
+export function buildDysonSubgroupMenu(
+  availableSubgroups = [],
+  mode = "cache",
+) {
+  const isDb = mode === "db";
+  const modeSelectorRow = [
+    {
+      text: isDb ? "💾 Cache" : "✅ 💾 Cache (Active)",
+      callback_data: `mode|set|cache|dyson`,
+    },
+    {
+      text: isDb ? "✅ 🗄️ DB (Active)" : "🗄️ DB",
+      callback_data: `mode|set|db|dyson`,
+    },
+  ];
+
+  const buttons = [modeSelectorRow];
+
+  const groupButtons = availableSubgroups.map((sg) => ({
+    text: sg.label,
+    callback_data: `cat|${mode}|dyson|subgroup|${sg.groupKey}`,
+  }));
+
+  for (let i = 0; i < groupButtons.length; i += 2) {
+    if (groupButtons[i + 1]) {
+      buttons.push([groupButtons[i], groupButtons[i + 1]]);
+    } else {
+      buttons.push([groupButtons[i]]);
+    }
+  }
+
+  buttons.push([
+    { text: "✅ Ստուգել բոլորը", callback_data: `cat|${mode}|dyson|all` },
+  ]);
+  buttons.push([{ text: "🔙 Հետ", callback_data: `cat|back|${mode}` }]);
+
+  return { reply_markup: { inline_keyboard: buttons } };
+}
+
+export function getDysonSubgroups(messages) {
+  const seen = new Set();
+  const subgroups = [];
+
+  for (const msg of messages) {
+    const groupKey = getDysonGroupKey(msg);
+    if (!seen.has(groupKey)) {
+      seen.add(groupKey);
+      subgroups.push({
+        groupKey,
+        label: getDysonSubgroupLabel(groupKey),
+      });
+    }
+  }
+
+  return subgroups;
+}
+
+export function filterDysonMessagesBySubgroup(messages, targetGroupKey) {
+  return messages.filter((m) => getDysonGroupKey(m) === targetGroupKey);
+}
+
+export function getPhoneSubgroups(messages) {
+  const seen = new Set();
+  const subgroups = [];
+
+  for (const msg of messages) {
+    const groupKey = getPhoneGroupKey(msg);
+    if (!seen.has(groupKey)) {
+      seen.add(groupKey);
+      subgroups.push({
+        groupKey,
+        label: getPhoneSubgroupLabel(groupKey),
+      });
+    }
+  }
+
+  return subgroups;
+}
+
+export function filterPhoneMessagesBySubgroup(messages, targetGroupKey) {
+  return messages.filter((m) => getPhoneGroupKey(m) === targetGroupKey);
+}
+
 export function filterMessagesByBrand(messages, categoryKey, brandIndex) {
   const config = CATEGORY_CONFIG[categoryKey];
   const brand = config?.brands?.[brandIndex];
   if (!brand) return messages;
-  const filtered = messages.filter((m) => brand.match.test(m));
-  return filtered.map((msg, i) => msg.replace(/^\d+\.\s*/, `${i + 1}. `));
+  return messages.filter((m) => brand.match.test(m));
 }
-

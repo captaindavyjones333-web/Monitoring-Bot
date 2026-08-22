@@ -124,7 +124,15 @@ function formatInstallation(installation) {
   return `${installation.toLocaleString("ru-RU").replace(/,/g, " ")} ֏`;
 }
 
-function formatPricePair(cash, installment, rsCash, rsInstallment, isRedstore, sourcesGroup, sourceOrder) {
+function formatPricePair(
+  cash,
+  installment,
+  rsCash,
+  rsInstallment,
+  isRedstore,
+  sourcesGroup,
+  sourceOrder,
+) {
   const fmt = (n, bold = false) => {
     if (n === null || n === undefined) return "—";
     const formatted = n.toLocaleString("ru-RU").replace(/,/g, " ");
@@ -262,11 +270,14 @@ export function buildComparisons(groups, category) {
 
     const firstRs = tiers[0].group.sources["redstore"];
     const displayName = firstRs.name
+      .replace(/\b\d+\s*gb\s*[\/+]\s*\d+\s*(?:gb|tb)\b/gi, "")
+      .replace(/\b\d+\s*[\/+]\s*\d+\s*(?:gb|tb)\b/gi, "")
       .replace(/\b\d+\s*(?:gb|tb)\b/gi, "")
       .replace(
-        /\b(Midnight|Starlight|Blue|Black|White|Red|Green|Yellow|Purple|Pink|Blush|Brass|Gold|Silver|Titanium|Natural|Desert|Ultramarine|Teal|Coral|Graphite|Alpine|Storm|Clay|Lavender|Mint|Sage|Cosmic Orange|Deep Blue|Sierra Blue|Space Gray|Space Grey|Deep Purple|Product Red|Sky Blue|Desert Titanium|Black Titanium|White Titanium|Natural Titanium|Rose Gold|Mocha|Brown|Navy|Orange|Porcelain|Obsidian|Hazel|Snow|Chalk|Charcoal|Fog|Lemongrass|Indigo|Jade|Moonstone|Bay|Aloe|Peony|Wintergreen|Sorta Seafoam|Sorta Sunny|Shadow|Jetblack|Onyx|Cobalt|Marble|Amber|Peach|Lime|Emerald|Phantom|Crafted|Icy|Silver Shadow|Blue Shadow|White Shadow|Black Shadow|Violet Shadow|Peach Pink|Onyx Black|Cobalt Violet|Marble Gray|Marble Grey|Amber Yellow|Titanium Jetblack|Crafted Black|Icy Blue|Gray|Grey)\b/gi,
+        /\b(Midnight|Starlight|Blue|Black|White|Red|Green|Yellow|Purple|Pink|Blush|Brass|Gold|Silver|Titanium|Natural|Desert|Ultramarine|Teal|Coral|Graphite|Alpine|Storm|Clay|Lavender|Mint|Sage|Cosmic Orange|Deep Blue|Sierra Blue|Space Gray|Space Grey|Deep Purple|Product Red|Sky Blue|Desert Titanium|Black Titanium|White Titanium|Natural Titanium|Rose Gold|Mocha|Brown|Navy|Orange|Porcelain|Obsidian|Hazel|Snow|Chalk|Charcoal|Fog|Lemongrass|Indigo|Jade|Moonstone|Bay|Aloe|Peony|Wintergreen|Sorta Seafoam|Sorta Sunny|Shadow|Jetblack|Onyx|Cobalt|Marble|Amber|Peach|Lime|Emerald|Phantom|Crafted|Icy|Silver Shadow|Blue Shadow|White Shadow|Black Shadow|Violet Shadow|Peach Pink|Onyx Black|Cobalt Violet|Marble Gray|Marble Grey|Amber Yellow|Titanium Jetblack|Crafted Black|Icy Blue|Gray|Grey|Cream)\b/gi,
         "",
       )
+      .replace(/\s*[\/\\,-]\s*(?=[\/\\,-]|\s*$)/g, "")
       .replace(/\s+/g, " ")
       .replace(/[\/\\,\-_\s]+$/, "")
       .trim();
@@ -316,14 +327,26 @@ export function buildComparisons(groups, category) {
         if (!isRS) {
           if (entry.cash_price) {
             const flag = getFlag(rsCash, entry.cash_price);
-            if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
+            if (
+              flag === "‼️" ||
+              flag === "♦️" ||
+              flag === "🏷" ||
+              flag === "✅"
+            )
+              hasAlert = true;
           }
           if (entry.installment_price) {
             const flag = getFlag(
               rsInstallment ?? rsCash,
               entry.installment_price,
             );
-            if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
+            if (
+              flag === "‼️" ||
+              flag === "♦️" ||
+              flag === "🏷" ||
+              flag === "✅"
+            )
+              hasAlert = true;
           }
         }
       }
@@ -608,9 +631,14 @@ export function buildMacbookComparisons(groups) {
           // Build aggregated sources for the bucket across all items
           const aggregatedSources = {};
           for (const s of sourceOrder) {
-            const entries = bucket.map((i) => i.group.sources[s]).filter(Boolean);
+            const entries = bucket
+              .map((i) => i.group.sources[s])
+              .filter(Boolean);
             if (entries.length > 0) {
-              entries.sort((a, b) => (a.cash_price ?? Infinity) - (b.cash_price ?? Infinity));
+              entries.sort(
+                (a, b) =>
+                  (a.cash_price ?? Infinity) - (b.cash_price ?? Infinity),
+              );
               aggregatedSources[s] = entries[0];
             }
           }
@@ -656,14 +684,16 @@ export function buildMacbookComparisons(groups) {
 
         if (bestEntry.cash_price) {
           const flag = getFlag(anchorCash, bestEntry.cash_price);
-          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") seriesHasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅")
+            seriesHasAlert = true;
         }
         if (bestEntry.installment_price) {
           const flag = getFlag(
             anchorInstallment ?? anchorCash,
             bestEntry.installment_price,
           );
-          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") seriesHasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅")
+            seriesHasAlert = true;
         }
       }
     }
@@ -774,14 +804,16 @@ export function buildTvComparisons(groups) {
       if (!isRS) {
         if (entry.cash_price) {
           const flag = getFlag(rsCash, entry.cash_price);
-          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅")
+            hasAlert = true;
         }
         if (entry.installment_price) {
           const flag = getFlag(
             rsInstallment ?? rsCash,
             entry.installment_price,
           );
-          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅")
+            hasAlert = true;
         }
       }
     }
@@ -868,14 +900,16 @@ export function buildDysonComparisons(groups) {
       if (!isRS) {
         if (entry.cash_price) {
           const flag = getFlag(rsCash, entry.cash_price);
-          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅")
+            hasAlert = true;
         }
         if (entry.installment_price) {
           const flag = getFlag(
             rsInstallment ?? rsCash,
             entry.installment_price,
           );
-          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅")
+            hasAlert = true;
         }
       }
     }
@@ -961,14 +995,16 @@ export function buildGamingComparisons(groups) {
       if (!isRS) {
         if (entry.cash_price) {
           const flag = getFlag(rsCash, entry.cash_price);
-          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅")
+            hasAlert = true;
         }
         if (entry.installment_price) {
           const flag = getFlag(
             rsInstallment ?? rsCash,
             entry.installment_price,
           );
-          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅")
+            hasAlert = true;
         }
       }
     }
@@ -1058,14 +1094,16 @@ export function buildACComparisons(groups) {
       if (!isRS) {
         if (entry.cash_price) {
           const flag = getFlag(rsCash, entry.cash_price);
-          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅")
+            hasAlert = true;
         }
         if (entry.installment_price) {
           const flag = getFlag(
             rsInstallment ?? rsCash,
             entry.installment_price,
           );
-          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅") hasAlert = true;
+          if (flag === "‼️" || flag === "♦️" || flag === "🏷" || flag === "✅")
+            hasAlert = true;
         }
       }
     }
@@ -1134,13 +1172,57 @@ export function getSortKey(message) {
   return `6_${name}`;
 }
 
-function getPhoneGroupKey(message) {
+export const PHONE_SUBGROUP_LABELS = {
+  "0_iphone_17_sim": "iPhone 17 (SIM)",
+  "0_iphone_17_esim": "iPhone 17 (eSIM)",
+  "0_iphone_16": "iPhone 16",
+  "0_iphone_15": "iPhone 15",
+  "0_iphone_14": "iPhone 14",
+  "0_iphone_13": "iPhone 13",
+  "0_iphone_12": "iPhone 12",
+  "0_iphone_11": "iPhone 11",
+  "0_iphone_se": "iPhone SE",
+  "0_iphone_other": "Այլ iPhone",
+  "1_samsung_s": "Galaxy S",
+  "1_samsung_z": "Galaxy Z",
+  "1_samsung_a": "Galaxy A",
+  "1_samsung_other": "Այլ Samsung",
+  "2_xiaomi_poco": "Poco",
+  "2_xiaomi_note": "Redmi Note",
+  "2_xiaomi_redmi": "Redmi",
+  "2_xiaomi_other": "Xiaomi",
+  "3_google_pixel": "Google Pixel",
+};
+
+export function getPhoneSubgroupLabel(groupKey) {
+  if (PHONE_SUBGROUP_LABELS[groupKey]) {
+    return PHONE_SUBGROUP_LABELS[groupKey];
+  }
+  if (groupKey && groupKey.startsWith("4_brand_")) {
+    const brand = groupKey.replace("4_brand_", "");
+    return brand.charAt(0).toUpperCase() + brand.slice(1);
+  }
+  return (
+    (groupKey && groupKey.replace(/^\d+_[a-z]+_?/, "").toUpperCase()) ||
+    groupKey
+  );
+}
+
+export function getPhoneGroupKey(message) {
   const name = message.toLowerCase();
 
-  // 1. iPhones: Group by generation series (e.g. 13 series, 14 series, 15 series, 16 series, 17 series incl. Air)
+  // 1. iPhones: Group by generation series (e.g. 13 series, 14 series, 15 series, 16 series, 17 series separated by eSIM vs Nano/Dual-Sim)
   if (name.includes("iphone")) {
-    if (name.includes("iphone 17") || name.includes("iphone air") || /\b17\s*air\b/i.test(name))
-      return "0_iphone_17";
+    if (
+      name.includes("iphone 17") ||
+      name.includes("iphone air") ||
+      /\b17\s*air\b/i.test(name)
+    ) {
+      if (/\besim\b/i.test(name)) {
+        return "0_iphone_17_esim";
+      }
+      return "0_iphone_17_sim";
+    }
     if (name.includes("iphone 16")) return "0_iphone_16";
     if (name.includes("iphone 15")) return "0_iphone_15";
     if (name.includes("iphone 14")) return "0_iphone_14";
@@ -1202,6 +1284,29 @@ function getPhoneGroupKey(message) {
   return `5_other_${name.split("\n")[0]}`;
 }
 
+const DYSON_SERIES_CODE_REGEX = /\bH([DST])[- ]?\d{2}\b/i;
+
+export function getDysonGroupKey(message) {
+  const match = message.match(DYSON_SERIES_CODE_REGEX);
+  if (!match) return "9_dyson_other";
+
+  const letter = match[1].toUpperCase();
+  if (letter === "T") return "0_dyson_ht";
+  if (letter === "D") return "1_dyson_hd";
+  if (letter === "S") return "2_dyson_hs";
+  return "9_dyson_other";
+}
+
+export function getDysonSubgroupLabel(groupKey) {
+  const labels = {
+    "0_dyson_ht": "HT Series",
+    "1_dyson_hd": "HD Series",
+    "2_dyson_hs": "HS Series",
+    "9_dyson_other": "Այլ",
+  };
+  return labels[groupKey] || groupKey;
+}
+
 export function groupPhoneAlerts(phoneMessages) {
   const groups = new Map();
 
@@ -1212,16 +1317,11 @@ export function groupPhoneAlerts(phoneMessages) {
   }
 
   const resultMessages = [];
-  let counter = 1;
+  let counter = 0;
 
   for (const [groupKey, msgs] of groups) {
-    if (msgs.length === 1) {
-      resultMessages.push(`${counter}. ${msgs[0]}`);
-    } else {
-      const combined = msgs.map((m) => m.trim()).join("\n\n");
-      resultMessages.push(`${counter}. ${combined}`);
-    }
-    counter++;
+    const numbered = msgs.map((m) => `${++counter}. ${m.trim()}`).join("\n\n");
+    resultMessages.push(numbered);
   }
 
   return resultMessages;
@@ -1359,17 +1459,12 @@ export function groupCategoryAlertsByBrand(category, messages) {
   });
 
   const resultMessages = [];
-  let counter = 1;
+  let counter = 0;
 
   for (const key of sortedKeys) {
     const msgs = grouped.get(key);
-    if (msgs.length === 1) {
-      resultMessages.push(`${counter}. ${msgs[0]}`);
-    } else {
-      const combined = msgs.map((m) => m.trim()).join("\n\n");
-      resultMessages.push(`${counter}. ${combined}`);
-    }
-    counter++;
+    const numbered = msgs.map((m) => `${++counter}. ${m.trim()}`).join("\n\n");
+    resultMessages.push(numbered);
   }
 
   return resultMessages;
@@ -1408,7 +1503,7 @@ export function splitAlertsByCategory(comparisons) {
     macbooks: buckets.macbooks.map((msg, i) => `${i + 1}. ${msg}`),
     speakers: groupCategoryAlertsByBrand("speakers", buckets.speakers),
     tvs: buckets.tvs.map((msg, i) => `${i + 1}. ${msg}`),
-    dyson: groupCategoryAlertsByBrand("dyson", buckets.dyson),
+    dyson: buckets.dyson.map((msg, i) => `${i + 1}. ${msg}`),
     gaming: groupCategoryAlertsByBrand("gaming", buckets.gaming),
     airconditioners: buckets.airconditioners.map(
       (msg, i) => `${i + 1}. ${msg}`,

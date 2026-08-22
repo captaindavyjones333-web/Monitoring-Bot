@@ -10,9 +10,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USERS_FILE = path.resolve(__dirname, "./data/users.json");
 
 function getApprovedUserIds() {
-  const adminId = process.env.ADMIN_ID;
-  const userIds = new Set();
-  if (adminId) userIds.add(adminId);
+  const adminIds = (process.env.ADMIN_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  const userIds = new Set(adminIds);
 
   if (fs.existsSync(USERS_FILE)) {
     try {
@@ -43,5 +46,6 @@ http
 startScheduler(bot, getApprovedUserIds);
 
 console.log("[bot] 🤖 Bot started. Scheduler initialized.");
-console.log("[bot] ⏰ Scheduled jobs: 06:00 (Full scrape) | 09:30 & 13:30 (Price Watch Diff)");
-
+console.log(
+  "[bot] ⏰ Scheduled jobs: 06:00 (Full scrape) | 09:30 & 13:30 (Price Watch Diff)",
+);
