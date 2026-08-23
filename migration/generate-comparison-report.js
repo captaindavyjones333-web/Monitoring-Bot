@@ -6,8 +6,8 @@
 //   1. CLI: node generate-comparison-report.js [--category=tvs]
 //   2. Bot inline button: bot.js calls runDbComparison(sendFn)
 
-import 'dotenv/config';
-import pg from 'pg';
+import "dotenv/config";
+import pg from "pg";
 
 import {
   buildComparisons,
@@ -17,23 +17,32 @@ import {
   buildGamingComparisons,
   buildACComparisons,
   splitAlertsByCategory,
-} from '../core/comparator.js';
-import { extractModelCode } from '../core/modelCode.js';
+} from "../core/comparator.js";
+import { extractModelCode } from "../core/modelCode.js";
+import { normalizeName } from "../core/normalizer.js";
+
+const NORMALIZED_KEY_CATEGORIES = new Set([
+  "phones",
+  "tablets",
+  "watches",
+  "headphones",
+  "speakers",
+]);
 
 // DB category slug -> which build*Comparisons() function handles it.
 // build*() returns [{ key, hasAlert, message }] — same objects comparator.js always returns.
 // splitAlertsByCategory() then filters hasAlert===true, sorts, groups by brand, and numbers them.
 const CATEGORY_HANDLERS = {
-  macbooks:           { build: (groups) => buildMacbookComparisons(groups) },
-  tvs:                { build: (groups) => buildTvComparisons(groups) },
-  dyson:              { build: (groups) => buildDysonComparisons(groups) },
-  gaming:             { build: (groups) => buildGamingComparisons(groups) },
-  'air-conditioners': { build: (groups) => buildACComparisons(groups) },
-  phones:             { build: (groups) => buildComparisons(groups, 'phones') },
-  tablets:            { build: (groups) => buildComparisons(groups, 'tablets') },
-  watches:            { build: (groups) => buildComparisons(groups, 'watches') },
-  headphones:         { build: (groups) => buildComparisons(groups, 'headphones') },
-  speakers:           { build: (groups) => buildComparisons(groups, 'speakers') },
+  macbooks: { build: (groups) => buildMacbookComparisons(groups) },
+  tvs: { build: (groups) => buildTvComparisons(groups) },
+  dyson: { build: (groups) => buildDysonComparisons(groups) },
+  gaming: { build: (groups) => buildGamingComparisons(groups) },
+  "air-conditioners": { build: (groups) => buildACComparisons(groups) },
+  phones: { build: (groups) => buildComparisons(groups, "phones") },
+  tablets: { build: (groups) => buildComparisons(groups, "tablets") },
+  watches: { build: (groups) => buildComparisons(groups, "watches") },
+  headphones: { build: (groups) => buildComparisons(groups, "headphones") },
+  speakers: { build: (groups) => buildComparisons(groups, "speakers") },
 };
 
 const DB_SLUG_BY_CATEGORY_KEY = {
@@ -73,7 +82,8 @@ export async function getDbComparisonGrouped(categoryFilter = null) {
     // product_id -> listings[]
     const listingsByProduct = new Map();
     for (const l of listingsRes.rows) {
-      if (!listingsByProduct.has(l.product_id)) listingsByProduct.set(l.product_id, []);
+      if (!listingsByProduct.has(l.product_id))
+        listingsByProduct.set(l.product_id, []);
       listingsByProduct.get(l.product_id).push(l);
     }
 
@@ -87,27 +97,48 @@ export async function getDbComparisonGrouped(categoryFilter = null) {
       if (!p.category_slug || !CATEGORY_HANDLERS[p.category_slug]) continue;
 
       const listings = listingsByProduct.get(p.id) ?? [];
-      if (listings.length === 0) { skippedNoListings += 1; continue; }
+      if (listings.length === 0) {
+        skippedNoListings += 1;
+        continue;
+      }
+      
+      let key;
+      if (NORMALIZED_KEY_CATEGORIES.has(p.category_slug)) {
+        const rsListing = listings.find((l) => l.store_name === "redstore");
+        const nameForKey =
+          (rsListing || listings[0]).raw_title || p.canonical_title;
+        key = normalizeName(nameForKey);
+      } else {
+        key = String(p.id);
+      }
 
-      const key = String(p.id);
-
-      if (!groupsByCategory.has(p.category_slug)) groupsByCategory.set(p.category_slug, new Map());
+      if (!groupsByCategory.has(p.category_slug))
+        groupsByCategory.set(p.category_slug, new Map());
       const categoryGroups = groupsByCategory.get(p.category_slug);
 
       // For macbooks, resolve model code from listings or product title
       let modelCode = null;
-      if (p.category_slug === 'macbooks') {
+      if (p.category_slug === "macbooks") {
         modelCode = extractModelCode(p.canonical_title);
         if (!modelCode) {
           for (const l of listings) {
-            modelCode = extractModelCode(l.raw_title) || (l.normalized_key && l.normalized_key.length === 5 ? l.normalized_key : null);
+            modelCode =
+              extractModelCode(l.raw_title) ||
+              (l.normalized_key && l.normalized_key.length === 5
+                ? l.normalized_key
+                : null);
             if (modelCode) break;
           }
         }
       }
 
       if (!categoryGroups.has(key)) {
-        categoryGroups.set(key, { normalized: modelCode || key, code: modelCode || key, canonicalTitle: p.canonical_title, sources: {} });
+        categoryGroups.set(key, {
+          normalized: modelCode || key,
+          code: modelCode || key,
+          canonicalTitle: p.canonical_title,
+          sources: {},
+        });
       }
       const targetGroup = categoryGroups.get(key);
 
@@ -115,35 +146,52 @@ export async function getDbComparisonGrouped(categoryFilter = null) {
         const existing = targetGroup.sources[l.store_name];
         const newCash = l.cash_price != null ? Number(l.cash_price) : Infinity;
         if (existing) {
-          const oldCash = existing.cash_price != null ? Number(existing.cash_price) : Infinity;
+          const oldCash =
+            existing.cash_price != null
+              ? Number(existing.cash_price)
+              : Infinity;
           if (newCash >= oldCash) continue;
         }
         targetGroup.sources[l.store_name] = {
           name: l.raw_title,
           cash_price: l.cash_price != null ? Number(l.cash_price) : null,
-          installment_price: l.installment_price != null ? Number(l.installment_price) : null,
-          ...(l.installation_price != null ? { installation_price: Number(l.installation_price) } : {}),
+          installment_price:
+            l.installment_price != null ? Number(l.installment_price) : null,
+          ...(l.installation_price != null
+            ? { installation_price: Number(l.installation_price) }
+            : {}),
         };
       }
     }
 
     if (skippedNoListings > 0) {
-      console.log(`[db-report] (${skippedNoListings} active product(s) have no active listings - skipped)`);
+      console.log(
+        `[db-report] (${skippedNoListings} active product(s) have no active listings - skipped)`,
+      );
     }
 
     // ── Run build*Comparisons() for each category slug ───────────────────
     // Each returns [{ key, hasAlert, message }] — collect them all into one flat array.
     const allComparisons = [];
     for (const [categorySlug, groups] of groupsByCategory) {
-      if (targetDbSlug && categorySlug !== targetDbSlug && categorySlug !== categoryFilter) continue;
+      if (
+        targetDbSlug &&
+        categorySlug !== targetDbSlug &&
+        categorySlug !== categoryFilter
+      )
+        continue;
       const handler = CATEGORY_HANDLERS[categorySlug];
       if (!handler) continue;
       try {
         const results = handler.build(groups);
         allComparisons.push(...results);
-        console.log(`[db-report] ${categorySlug}: ${results.length} group(s) built, ${results.filter((r) => r.hasAlert).length} with alerts`);
+        console.log(
+          `[db-report] ${categorySlug}: ${results.length} group(s) built, ${results.filter((r) => r.hasAlert).length} with alerts`,
+        );
       } catch (err) {
-        console.error(`[db-report] Failed for '${categorySlug}': ${err.message}`);
+        console.error(
+          `[db-report] Failed for '${categorySlug}': ${err.message}`,
+        );
       }
     }
 
@@ -171,8 +219,16 @@ export async function runDbComparison(sendFn = null, categoryFilter = null) {
 
   // Flatten all categories into a single ordered list of sendable strings
   const CATEGORY_ORDER = [
-    'phones', 'tablets', 'watches', 'headphones',
-    'macbooks', 'speakers', 'tvs', 'dyson', 'gaming', 'airconditioners',
+    "phones",
+    "tablets",
+    "watches",
+    "headphones",
+    "macbooks",
+    "speakers",
+    "tvs",
+    "dyson",
+    "gaming",
+    "airconditioners",
   ];
   const allMessages = [];
   for (const cat of CATEGORY_ORDER) {
@@ -185,11 +241,11 @@ export async function runDbComparison(sendFn = null, categoryFilter = null) {
   console.log(`\n[db-report] ${allMessages.length} alert message(s) to send`);
 
   // ── Deliver via injected send callback (bot) or print (CLI) ─────────
-  if (typeof sendFn === 'function') {
+  if (typeof sendFn === "function") {
     for (const { text } of allMessages) {
       await sendFn(text);
     }
-    console.log('[db-report] All messages sent.');
+    console.log("[db-report] All messages sent.");
   } else {
     for (const { category, text } of allMessages) {
       console.log(`\n--- [${category}] ---`);
@@ -203,16 +259,18 @@ export async function runDbComparison(sendFn = null, categoryFilter = null) {
 // CLI entry-point - only executes when run directly via node
 const isMain =
   process.argv[1] &&
-  (process.argv[1].endsWith('generate-comparison-report.js') ||
-   process.argv[1].endsWith('generate-comparison-report'));
+  (process.argv[1].endsWith("generate-comparison-report.js") ||
+    process.argv[1].endsWith("generate-comparison-report"));
 
 if (isMain) {
   const args = process.argv.slice(2);
-  const categoryFilterArg = args.find((a) => a.startsWith('--category='));
-  const categoryFilter = categoryFilterArg ? categoryFilterArg.split('=')[1] : null;
+  const categoryFilterArg = args.find((a) => a.startsWith("--category="));
+  const categoryFilter = categoryFilterArg
+    ? categoryFilterArg.split("=")[1]
+    : null;
 
   runDbComparison(null, categoryFilter).catch((err) => {
-    console.error('generate-comparison-report failed:', err);
+    console.error("generate-comparison-report failed:", err);
     process.exit(1);
   });
 }

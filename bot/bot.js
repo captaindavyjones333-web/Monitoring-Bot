@@ -17,23 +17,38 @@ import {
   getCategoryMenuText,
   getMainMenuText,
   filterMessagesByBrand,
+  buildPhoneSubgroupMenu,
+  buildDysonSubgroupMenu,
+  getDysonSubgroupMenuText,
+  getDysonSubgroups,
+  filterDysonMessagesBySubgroup,
 } from "../core/categoryMenu.js";
+import {
+  getPhoneGroupKey,
+  getPhoneSubgroupLabel,
+  getDysonGroupKey,
+  getDysonSubgroupLabel,
+} from "../core/comparator.js";
 import { searchProducts } from "../core/search.js";
 import dotenv from "dotenv";
 
 dotenv.config();
 const awaitingSearch = new Set();
+const pendingApprovals = new Map();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USERS_FILE = path.resolve(__dirname, "../data/users.json");
 
 const TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
-const ADMIN_ID = process.env.ADMIN_ID;
+const ADMIN_IDS = (process.env.ADMIN_IDS || "")
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
 
 if (!TOKEN) throw new Error("BOT_TOKEN is missing in .env");
 if (!CHAT_ID) throw new Error("CHAT_ID is missing in .env");
-if (!ADMIN_ID) throw new Error("ADMIN_ID is missing in .env");
+if (ADMIN_IDS.length === 0) throw new Error("ADMIN_IDS is missing in .env");
 
 export const bot = new TelegramBot(TOKEN, { polling: true });
 
@@ -59,7 +74,8 @@ function loadPreferences() {
       return memoryPreferences;
     }
     const parsed = JSON.parse(content);
-    memoryPreferences = typeof parsed === "object" && parsed !== null ? parsed : {};
+    memoryPreferences =
+      typeof parsed === "object" && parsed !== null ? parsed : {};
     return memoryPreferences;
   } catch {
     memoryPreferences = {};
@@ -117,13 +133,13 @@ function saveUsers(users) {
 function isApproved(userId) {
   const users = loadUsers();
   return (
-    String(userId) === String(ADMIN_ID) ||
+    ADMIN_IDS.includes(String(userId)) ||
     users[String(userId)]?.approved === true
   );
 }
 
 function isAdmin(userId) {
-  return String(userId) === String(ADMIN_ID);
+  return ADMIN_IDS.includes(String(userId));
 }
 
 // ─── Keyboards ────────────────────────────────────────────────────────────────
@@ -165,6 +181,17 @@ export async function sendAlerts(messages, targetChatId = CHAT_ID) {
     }
   }
   await bot.sendMessage(targetChatId, "—", MAIN_KEYBOARD).catch(() => {});
+}
+
+// ─── Renumber block utility ─────────────────────────────────────────────────────
+
+function renumberBlock(text) {
+  let n = 0;
+  return text
+    .split("\n\n")
+    .map((item) => item.replace(/^\d+\.\s*/, ""))
+    .map((item) => `${++n}. ${item}`)
+    .join("\n\n");
 }
 
 // ─── Cash prices quick scan ───────────────────────────────────────────────────
@@ -244,20 +271,38 @@ bot.onText(/\/start/, async (msg) => {
   );
 
   // Notify admin
-  await bot.sendMessage(
-    ADMIN_ID,
-    `🔔 Նոր հայտ:\nՕգտատեր: @${username}\nID: ${userId}`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "✅ Հաստատել", callback_data: `approve_${userId}` },
-            { text: "❌ Մերժել", callback_data: `reject_${userId}` },
-          ],
-        ],
-      },
-    },
-  );
+  // Notify all admins
+  // Notify all admins
+  const sentMessages = [];
+  for (const adminId of ADMIN_IDS) {
+    const sent = await bot
+      .sendMessage(
+        adminId,
+        `🔔 Նոր հայտ:\nՕգտատեր: @${username}\nID: ${userId}`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "✅ Հաստատել", callback_data: `approve_${userId}` },
+                { text: "❌ Մերժել", callback_data: `reject_${userId}` },
+              ],
+            ],
+          },
+        },
+      )
+      .catch(() => null);
+    if (sent)
+      sentMessages.push({ chatId: adminId, messageId: sent.message_id });
+  }
+  pendingApprovals.set(userId, sentMessages);
+});
+
+// ─── /admin ───────────────────────────────────────────────────────────────────
+
+bot.onText(/\/admin/, async (msg) => {
+  const userId = String(msg.chat.id);
+  if (!isAdmin(userId)) return;
+  await showUsersList(userId);
 });
 
 // ─── Callback queries (admin approve/reject/remove + category filters) ───────
@@ -283,13 +328,13 @@ bot.on("callback_query", async (query) => {
         saveUsers(users);
       }
       await bot.answerCallbackQuery(query.id, { text: "✅ Հաստատված" });
-      await bot.editMessageReplyMarkup(
-        { inline_keyboard: [] },
-        {
-          chat_id: query.message.chat.id,
-          message_id: query.message.message_id,
-        },
-      );
+
+      const entries = pendingApprovals.get(targetId) || [];
+      for (const { chatId, messageId } of entries) {
+        await bot.deleteMessage(chatId, messageId).catch(() => {});
+      }
+      pendingApprovals.delete(targetId);
+
       await bot.sendMessage(
         targetId,
         "✅ Ձեր հայտը հաստատվել է: Կարող եք օգտվել բոտից:",
@@ -306,13 +351,13 @@ bot.on("callback_query", async (query) => {
         saveUsers(users);
       }
       await bot.answerCallbackQuery(query.id, { text: "❌ Մերժված" });
-      await bot.editMessageReplyMarkup(
-        { inline_keyboard: [] },
-        {
-          chat_id: query.message.chat.id,
-          message_id: query.message.message_id,
-        },
-      );
+
+      const entries = pendingApprovals.get(targetId) || [];
+      for (const { chatId, messageId } of entries) {
+        await bot.deleteMessage(chatId, messageId).catch(() => {});
+      }
+      pendingApprovals.delete(targetId);
+
       await bot.sendMessage(targetId, "❌ Ձեր հայտը մերժվել է:");
       await bot.sendMessage(adminId, `❌ Օգտատեր ${targetId} մերժված է:`);
     }
@@ -372,36 +417,165 @@ bot.on("callback_query", async (query) => {
       setUserMode(userId, targetMode);
 
       if (context === "main") {
-        await bot.editMessageText(getMainMenuText(targetMode), {
-          chat_id: query.message.chat.id,
-          message_id: query.message.message_id,
-          parse_mode: "Markdown",
-          ...buildComparisonMainMenu(targetMode),
-        }).catch(() => {});
+        await bot
+          .editMessageText(getMainMenuText(targetMode), {
+            chat_id: query.message.chat.id,
+            message_id: query.message.message_id,
+            parse_mode: "Markdown",
+            ...buildComparisonMainMenu(targetMode),
+          })
+          .catch(() => {});
       } else if (CATEGORY_CONFIG[context]) {
-        await bot.editMessageText(getCategoryMenuText(context, targetMode), {
-          chat_id: query.message.chat.id,
-          message_id: query.message.message_id,
-          parse_mode: "Markdown",
-          ...buildCategoryMenu(context, targetMode),
-        }).catch(() => {});
+        await bot
+          .editMessageText(getCategoryMenuText(context, targetMode), {
+            chat_id: query.message.chat.id,
+            message_id: query.message.message_id,
+            parse_mode: "Markdown",
+            ...buildCategoryMenu(context, targetMode),
+          })
+          .catch(() => {});
       }
     }
     return;
   }
 
   // Open category brand menu from main comparison menu: cat|open|<mode>|<categoryKey>
+  // Open category brand menu from main comparison menu: cat|open|<mode>|<categoryKey>
   if (data.startsWith("cat|open|")) {
     const [, , mode, categoryKey] = data.split("|");
     if (CATEGORY_CONFIG[categoryKey]) {
       const selectedMode = mode || getUserMode(userId);
       setUserMode(userId, selectedMode);
-      await bot.editMessageText(getCategoryMenuText(categoryKey, selectedMode), {
-        chat_id: query.message.chat.id,
-        message_id: query.message.message_id,
-        parse_mode: "Markdown",
-        ...buildCategoryMenu(categoryKey, selectedMode),
-      }).catch(() => {});
+
+      // Dyson: skip the brand menu (no brands) and go straight to series buttons
+      if (categoryKey === "dyson") {
+        try {
+          const result =
+            selectedMode === "db"
+              ? await getDbComparisonGrouped("dyson")
+              : await runSendJob(false, false);
+
+          const categoryMessages = result.dyson || [];
+          const subgroups = getDysonSubgroups(categoryMessages);
+
+          await bot
+            .editMessageText(getDysonSubgroupMenuText(selectedMode), {
+              chat_id: query.message.chat.id,
+              message_id: query.message.message_id,
+              parse_mode: "Markdown",
+              ...buildDysonSubgroupMenu(subgroups, selectedMode),
+            })
+            .catch(() => {});
+        } catch (err) {
+          console.error("[bot] ❌ Dyson menu load failed:", err.message);
+          await bot.sendMessage(
+            userId,
+            "❌ Սխալ: " + err.message,
+            USER_KEYBOARD,
+          );
+        }
+        return;
+      }
+
+      await bot
+        .editMessageText(getCategoryMenuText(categoryKey, selectedMode), {
+          chat_id: query.message.chat.id,
+          message_id: query.message.message_id,
+          parse_mode: "Markdown",
+          ...buildCategoryMenu(categoryKey, selectedMode),
+        })
+        .catch(() => {});
+    }
+    return;
+  }
+
+  // Dyson subgroup selection: cat|<mode>|dyson|subgroup|<groupKey>
+  if (data.startsWith("cat|") && data.includes("|dyson|subgroup|")) {
+    const [, subMode, , , groupKey] = data.split("|");
+    const selectedMode =
+      subMode === "cache" || subMode === "db" ? subMode : getUserMode(userId);
+    setUserMode(userId, selectedMode);
+    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+
+    try {
+      const result =
+        selectedMode === "db"
+          ? await getDbComparisonGrouped("dyson")
+          : await runSendJob(false, false);
+
+      const categoryMessages = result.dyson || [];
+      const filtered = filterDysonMessagesBySubgroup(
+        categoryMessages,
+        groupKey,
+      );
+      const messages = filtered.length
+        ? renumberBlock(filtered.join("\n\n")).split("\n\n")
+        : [];
+
+      if (messages.length === 0) {
+        await bot.sendMessage(
+          userId,
+          `✅ [${selectedMode.toUpperCase()}] Գնային անհամապատասխանություններ չկան`,
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `🚨 [${selectedMode.toUpperCase()}] ${getDysonSubgroupLabel(groupKey)}`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(messages, userId);
+    } catch (err) {
+      console.error("[bot] ❌ Dyson subgroup check failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  // ⬇️ INSERT THE NEW SUBGROUP BLOCK HERE ⬇️
+  // Phones subgroup selection: cat|<mode>|phones|subgroup|<brandIndex>|<groupKey>
+  if (data.startsWith("cat|") && data.includes("|subgroup|")) {
+    const [, subMode, , , brandIdxStr, groupKey] = data.split("|");
+    const selectedMode =
+      subMode === "cache" || subMode === "db" ? subMode : getUserMode(userId);
+    setUserMode(userId, selectedMode);
+    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+
+    try {
+      const result =
+        selectedMode === "db"
+          ? await getDbComparisonGrouped("phones")
+          : await runSendJob(false, false);
+
+      const categoryMessages = result.phones || [];
+      const brandFiltered = filterMessagesByBrand(
+        categoryMessages,
+        "phones",
+        Number(brandIdxStr),
+      );
+      const block = brandFiltered.find((m) => getPhoneGroupKey(m) === groupKey);
+      const messages = block ? [renumberBlock(block)] : [];
+
+      if (messages.length === 0) {
+        await bot.sendMessage(
+          userId,
+          `✅ [${selectedMode.toUpperCase()}] Գնային անհամապատասխանություններ չկան`,
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `🚨 [${selectedMode.toUpperCase()}] ${getPhoneSubgroupLabel(groupKey)}`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(messages, userId);
+    } catch (err) {
+      console.error("[bot] ❌ Phone subgroup check failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
     }
     return;
   }
@@ -445,16 +619,12 @@ bot.on("callback_query", async (query) => {
 
     const categoryMessages = result[categoryKey] || [];
 
-    const messages =
+    const brandFiltered =
       action === "brand" && brandIndex != null
-        ? filterMessagesByBrand(
-            categoryMessages,
-            categoryKey,
-            brandIndex,
-          )
+        ? filterMessagesByBrand(categoryMessages, categoryKey, brandIndex)
         : categoryMessages;
 
-    if (messages.length === 0) {
+    if (brandFiltered.length === 0) {
       await bot.sendMessage(
         userId,
         `✅ [${modeUpper}] Գնային անհամապատասխանություններ չկան (${catLabel})`,
@@ -462,6 +632,26 @@ bot.on("callback_query", async (query) => {
       );
       return;
     }
+
+    // Phones: brand selected → show subgroup buttons instead of sending everything
+    if (categoryKey === "phones" && action === "brand" && brandIndex != null) {
+      const uniqueGroupKeys = [
+        ...new Set(brandFiltered.map((block) => getPhoneGroupKey(block))),
+      ];
+      if (uniqueGroupKeys.length > 1) {
+        const subgroups = uniqueGroupKeys.map((groupKey) => ({
+          groupKey,
+          label: getPhoneSubgroupLabel(groupKey),
+        }));
+        await bot.sendMessage(userId, `📱 ${catLabel} — ընտրեք խումբը`, {
+          parse_mode: "Markdown",
+          ...buildPhoneSubgroupMenu(brandIndex, subgroups, mode),
+        });
+        return;
+      }
+    }
+
+    const messages = brandFiltered;
 
     await bot.sendMessage(
       userId,
@@ -601,14 +791,10 @@ bot.on("message", async (msg) => {
     const userMode = text === "🧪 DB Comparison" ? "db" : getUserMode(userId);
     if (text === "🧪 DB Comparison") setUserMode(userId, "db");
 
-    await bot.sendMessage(
-      userId,
-      getMainMenuText(userMode),
-      {
-        parse_mode: "Markdown",
-        ...buildComparisonMainMenu(userMode),
-      },
-    );
+    await bot.sendMessage(userId, getMainMenuText(userMode), {
+      parse_mode: "Markdown",
+      ...buildComparisonMainMenu(userMode),
+    });
     return;
   }
 
@@ -661,14 +847,10 @@ bot.on("message", async (msg) => {
   if (CATEGORY_LABEL_TO_KEY[text]) {
     const categoryKey = CATEGORY_LABEL_TO_KEY[text];
     const userMode = getUserMode(userId);
-    await bot.sendMessage(
-      userId,
-      getCategoryMenuText(categoryKey, userMode),
-      {
-        parse_mode: "Markdown",
-        ...buildCategoryMenu(categoryKey, userMode),
-      },
-    );
+    await bot.sendMessage(userId, getCategoryMenuText(categoryKey, userMode), {
+      parse_mode: "Markdown",
+      ...buildCategoryMenu(categoryKey, userMode),
+    });
     return;
   }
 });
