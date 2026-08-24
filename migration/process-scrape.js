@@ -23,7 +23,14 @@ try {
 } catch {}
 import pg from "pg";
 
-import { detectCategory, MACBOOK_REGEX, TV_REGEX, GAMING_REGEX, AC_REGEX, DYSON_REGEX } from "../core/categoryDetector.js";
+import {
+  detectCategory,
+  MACBOOK_REGEX,
+  TV_REGEX,
+  GAMING_REGEX,
+  AC_REGEX,
+  DYSON_REGEX,
+} from "../core/categoryDetector.js";
 import { normalizeName, groupByNormalizedName } from "../core/normalizer.js";
 import { extractModelCode } from "../core/modelCode.js";
 import { extractTvModelCode } from "../core/tvModelCode.js";
@@ -36,7 +43,9 @@ const dryRun = args.includes("--dry-run");
 const inputPath = args.find((a) => !a.startsWith("--"));
 
 if (!inputPath) {
-  console.error("Usage: node process-scrape.js path/to/scrape.json-or-folder [--dry-run]");
+  console.error(
+    "Usage: node process-scrape.js path/to/scrape.json-or-folder [--dry-run]",
+  );
   process.exit(1);
 }
 
@@ -75,7 +84,8 @@ function groupTvsAllSources(products) {
   for (const product of products) {
     const code = extractTvModelCode(product.name);
     if (!code) continue;
-    if (!groups.has(code)) groups.set(code, { normalized: code, code, sources: {} });
+    if (!groups.has(code))
+      groups.set(code, { normalized: code, code, sources: {} });
     groups.get(code).sources[product.source] = product;
   }
   for (const product of products) {
@@ -123,7 +133,7 @@ function assignBatchKeys(rawItems) {
     } else if (byCategory[bucket]) {
       byCategory[bucket].push(p);
     } else {
-      (byCategory.phones).push(p);
+      byCategory.phones.push(p);
     }
   }
 
@@ -166,7 +176,8 @@ function detectBucket(name, scraperCategory) {
   // Prefer the category provided directly by the scraper (if present and
   // recognised) over regex-based detection — this is more reliable because
   // each scraper file already knows which category it represents.
-  if (scraperCategory && CATEGORY_SLUG_MAP[scraperCategory]) return scraperCategory;
+  if (scraperCategory && CATEGORY_SLUG_MAP[scraperCategory])
+    return scraperCategory;
   if (MACBOOK_REGEX.test(name)) return "macbooks";
   if (TV_REGEX.test(name)) return "tvs";
   if (DYSON_REGEX.test(name)) return "dyson";
@@ -206,7 +217,9 @@ function loadRaw(inputPath) {
   } else {
     const items = readOne(resolved);
     if (!items) {
-      console.error("Input JSON must be an array or a {source, products:[...]} object.");
+      console.error(
+        "Input JSON must be an array or a {source, products:[...]} object.",
+      );
       process.exit(1);
     }
     raw = items;
@@ -217,7 +230,9 @@ function loadRaw(inputPath) {
 let raw = loadRaw(inputPath);
 const missingSource = raw.filter((p) => !p.source);
 if (missingSource.length > 0) {
-  console.error(`${missingSource.length} object(s) missing "source" — every listing must have one.`);
+  console.error(
+    `${missingSource.length} object(s) missing "source" — every listing must have one.`,
+  );
   process.exit(1);
 }
 
@@ -231,9 +246,16 @@ for (const p of raw) {
 // Null out anything that would overflow rather than crashing the whole run.
 const MAX_PRICE = 9_999_999_999.99;
 for (const p of raw) {
-  for (const field of ["price", "cash_price", "installment_price", "installation_price"]) {
+  for (const field of [
+    "price",
+    "cash_price",
+    "installment_price",
+    "installation_price",
+  ]) {
     if (p[field] != null && Math.abs(Number(p[field])) > MAX_PRICE) {
-      console.warn(`  [${p.source}] "${p.name}" — ${field} value ${p[field]} overflows NUMERIC(12,2), setting to null.`);
+      console.warn(
+        `  [${p.source}] "${p.name}" — ${field} value ${p[field]} overflows NUMERIC(12,2), setting to null.`,
+      );
       p[field] = null;
     }
   }
@@ -254,7 +276,9 @@ for (const p of raw) {
     }
   }
   if (deduped.length < raw.length) {
-    console.warn(`  Deduplicated ${raw.length - deduped.length} duplicate listing(s) from input.`);
+    console.warn(
+      `  Deduplicated ${raw.length - deduped.length} duplicate listing(s) from input.`,
+    );
   }
   raw = deduped;
 }
@@ -263,25 +287,39 @@ assignBatchKeys(raw);
 
 console.log(`Loaded ${raw.length} listing(s) from ${inputPath}\n`);
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
 async function run() {
   const client = await pool.connect();
-  const stats = { updated: 0, attachedToExisting: 0, newProduct: 0, skippedNoUrl: 0 };
+  const stats = {
+    updated: 0,
+    attachedToExisting: 0,
+    newProduct: 0,
+    skippedNoUrl: 0,
+  };
   try {
     if (!dryRun) await client.query("BEGIN");
 
     // Cache store lookups (id + is_own_store) for the run.
     const storeRes = await client.query(`SELECT id, name FROM stores`);
-    const storeIdByName = Object.fromEntries(storeRes.rows.map((r) => [r.name, r.id]));
+    const storeIdByName = Object.fromEntries(
+      storeRes.rows.map((r) => [r.name, r.id]),
+    );
 
     const categoryRes = await client.query(`SELECT id, slug FROM categories`);
-    const categoryIdBySlug = Object.fromEntries(categoryRes.rows.map((r) => [r.slug, r.id]));
+    const categoryIdBySlug = Object.fromEntries(
+      categoryRes.rows.map((r) => [r.slug, r.id]),
+    );
 
     for (const item of raw) {
       const storeId = storeIdByName[item.source];
       if (!storeId) {
-        console.warn(`  Unknown store "${item.source}" — skipping listing "${item.name}". Add it to stores first.`);
+        console.warn(
+          `  Unknown store "${item.source}" — skipping listing "${item.name}". Add it to stores first.`,
+        );
         continue;
       }
 
@@ -304,7 +342,8 @@ async function run() {
            FROM store_listings WHERE store_id = $1 AND raw_title = $2`,
           [storeId, item.name],
         );
-        if (existingByName.rows.length > 0) existingListing = existingByName.rows[0];
+        if (existingByName.rows.length > 0)
+          existingListing = existingByName.rows[0];
       }
 
       if (existingListing) {
@@ -331,7 +370,11 @@ async function run() {
               item.installment_price,
               item.installation_price ?? null,
               key,
-              bucket === "phones" || bucket === "tablets" || bucket === "watches" || bucket === "headphones" || bucket === "speakers"
+              bucket === "phones" ||
+              bucket === "tablets" ||
+              bucket === "watches" ||
+              bucket === "headphones" ||
+              bucket === "speakers"
                 ? normalizeName(item.name)
                 : null,
               listing.id,
@@ -410,7 +453,11 @@ async function run() {
             storeId,
             productId,
             item.name,
-            bucket === "phones" || bucket === "tablets" || bucket === "watches" || bucket === "headphones" || bucket === "speakers"
+            bucket === "phones" ||
+            bucket === "tablets" ||
+            bucket === "watches" ||
+            bucket === "headphones" ||
+            bucket === "speakers"
               ? normalizeName(item.name)
               : null,
             key,
@@ -425,7 +472,12 @@ async function run() {
           await client.query(
             `INSERT INTO product_matches (store_listing_id, product_id, match_method, confidence_score, status)
              VALUES ($1, $2, $3, $4, 'confirmed')`,
-            [listingRes.rows[0].id, productId, key ? "regex_rule" : "manual", key ? 1.0 : 0.5],
+            [
+              listingRes.rows[0].id,
+              productId,
+              key ? "regex_rule" : "manual",
+              key ? 1.0 : 0.5,
+            ],
           );
         }
       }
@@ -439,10 +491,16 @@ async function run() {
       console.log("\nCommitted. Summary:");
     }
     console.log(`  Updated existing listings: ${stats.updated}`);
-    console.log(`  New listings attached to an existing product: ${stats.attachedToExisting}`);
-    console.log(`  New listings that became a brand-new product: ${stats.newProduct}`);
+    console.log(
+      `  New listings attached to an existing product: ${stats.attachedToExisting}`,
+    );
+    console.log(
+      `  New listings that became a brand-new product: ${stats.newProduct}`,
+    );
     if (stats.skippedNoUrl > 0) {
-      console.log(`  (${stats.skippedNoUrl} new listings had no URL — future search/check-url style verification won't work for these until the scraper adds one)`);
+      console.log(
+        `  (${stats.skippedNoUrl} new listings had no URL — future search/check-url style verification won't work for these until the scraper adds one)`,
+      );
     }
   } catch (err) {
     if (!dryRun) await client.query("ROLLBACK");

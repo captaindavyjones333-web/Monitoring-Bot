@@ -57,7 +57,7 @@ const DB_SLUG_BY_CATEGORY_KEY = {
  * @param {string | null} categoryFilter - e.g. 'phones', 'tvs', 'airconditioners'. null = all categories.
  */
 export async function getDbComparisonGrouped(categoryFilter = null) {
-  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
   const client = await pool.connect();
   try {
     const targetDbSlug = categoryFilter

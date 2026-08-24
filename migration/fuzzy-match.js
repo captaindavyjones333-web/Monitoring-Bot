@@ -35,7 +35,7 @@ import { extractTvModelCode } from "../core/tvModelCode.js";
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
 // Same RS-anchor-free TV grouping used in migrate.js (groupTvsByCode in
 // comparator.js only seeds codes from redstore — see product-db-design.md

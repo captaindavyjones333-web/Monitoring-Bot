@@ -193,7 +193,7 @@ function loadRaw(inputPath) {
 const raw = loadRaw(inputPath);
 console.log(`Loaded ${raw.length} listing(s) from ${inputPath} to determine what's currently visible.\n`);
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
 async function run() {
   const client = await pool.connect();
