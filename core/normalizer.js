@@ -31,6 +31,7 @@ const COLORS = [
   "orange",
   "gray",
   "grey",
+  "lotus",
   "space gray",
   "space grey",
   "space black",

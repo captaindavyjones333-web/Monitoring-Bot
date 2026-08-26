@@ -109,6 +109,20 @@ export const CATEGORY_CONFIG = {
       { label: "Samsung", match: /samsung/i },
     ],
   },
+  notebooks: {
+    label: "💻 Notebooks",
+    brands: [
+      { label: "Asus", match: /asus|rog|tuf/i },
+      { label: "Lenovo", match: /lenovo|legion|ideapad|thinkpad|loq/i },
+      { label: "HP", match: /\bhp\b|victus|omen|pavilion|probook|elitebook/i },
+      { label: "Dell", match: /dell|vostro|inspiron|alienware|latitude/i },
+      { label: "Acer", match: /acer|nitro|predator|aspire|swift/i },
+      { label: "MSI", match: /\bmsi\b|cyborg|katana|stealth|thin|modern/i },
+      { label: "Samsung", match: /samsung|galaxy\s*book/i },
+      { label: "Xiaomi", match: /xiaomi|redmibook/i },
+      { label: "Microsoft", match: /microsoft|surface/i },
+    ],
+  },
 };
 
 import {
@@ -181,6 +195,10 @@ export function buildComparisonMainMenu(mode = "cache") {
 }
 
 export function buildCategoryMenu(categoryKey, mode = "cache") {
+  if (categoryKey === "notebooks") {
+    return buildNotebookMenu(mode);
+  }
+
   const config = CATEGORY_CONFIG[categoryKey];
   const isDb = mode === "db";
 
@@ -216,6 +234,134 @@ export function buildCategoryMenu(categoryKey, mode = "cache") {
     },
   ]);
   buttons.push([{ text: "🔙 Հետ", callback_data: `cat|back|${mode}` }]);
+
+  return { reply_markup: { inline_keyboard: buttons } };
+}
+
+export function buildNotebookMenu(mode = "cache") {
+  const isDb = mode === "db";
+  const modeSelectorRow = [
+    {
+      text: isDb ? "💾 Cache" : "✅ 💾 Cache (Active)",
+      callback_data: `mode|set|cache|notebooks`,
+    },
+    {
+      text: isDb ? "✅ 🗄️ DB (Active)" : "🗄️ DB",
+      callback_data: `mode|set|db|notebooks`,
+    },
+  ];
+
+  const buttons = [
+    modeSelectorRow,
+    [
+      { text: "🎮 Gaming", callback_data: `cat|${mode}|notebooks|section|gaming` },
+      { text: "💼 Standard/Business", callback_data: `cat|${mode}|notebooks|section|standard` },
+    ],
+    [
+      { text: "🏷️ Same Brand", callback_data: `cat|${mode}|notebooks|section|same_brand` },
+      { text: "🌐 Cross Brand", callback_data: `cat|${mode}|notebooks|section|cross_brand` },
+    ],
+    [{ text: "🔙 Հետ", callback_data: `cat|back|${mode}` }],
+  ];
+
+  return { reply_markup: { inline_keyboard: buttons } };
+}
+
+export function buildNotebookCpuGroupMenu(mode = "cache", section = "gaming", availableCpuGroups = []) {
+  const isDb = mode === "db";
+  const modeSelectorRow = [
+    {
+      text: isDb ? "💾 Cache" : "✅ 💾 Cache (Active)",
+      callback_data: `mode|set|cache|notebooks_${section}`,
+    },
+    {
+      text: isDb ? "✅ 🗄️ DB (Active)" : "🗄️ DB",
+      callback_data: `mode|set|db|notebooks_${section}`,
+    },
+  ];
+
+  const buttons = [modeSelectorRow];
+
+  const groupButtons = availableCpuGroups.map((groupKey) => ({
+    text: `Core / Ryzen ${groupKey}`,
+    callback_data: `cat|${mode}|notebooks|sub|${section}|${groupKey}`,
+  }));
+
+  for (let i = 0; i < groupButtons.length; i += 2) {
+    if (groupButtons[i + 1]) {
+      buttons.push([groupButtons[i], groupButtons[i + 1]]);
+    } else {
+      buttons.push([groupButtons[i]]);
+    }
+  }
+
+  buttons.push([{ text: "🔙 Հետ", callback_data: `cat|open|${mode}|notebooks` }]);
+
+  return { reply_markup: { inline_keyboard: buttons } };
+}
+
+export function buildNotebookSameBrandMenu(mode = "cache", availableBrands = []) {
+  const isDb = mode === "db";
+  const modeSelectorRow = [
+    {
+      text: isDb ? "💾 Cache" : "✅ 💾 Cache (Active)",
+      callback_data: `mode|set|cache|notebooks_same_brand`,
+    },
+    {
+      text: isDb ? "✅ 🗄️ DB (Active)" : "🗄️ DB",
+      callback_data: `mode|set|db|notebooks_same_brand`,
+    },
+  ];
+
+  const buttons = [modeSelectorRow];
+
+  const brandButtons = availableBrands.map((brand) => ({
+    text: brand,
+    callback_data: `cat|${mode}|notebooks|sb_brand|${brand}`,
+  }));
+
+  for (let i = 0; i < brandButtons.length; i += 2) {
+    if (brandButtons[i + 1]) {
+      buttons.push([brandButtons[i], brandButtons[i + 1]]);
+    } else {
+      buttons.push([brandButtons[i]]);
+    }
+  }
+
+  buttons.push([{ text: "🔙 Հետ", callback_data: `cat|open|${mode}|notebooks` }]);
+
+  return { reply_markup: { inline_keyboard: buttons } };
+}
+
+export function buildNotebookSameBrandCpuGroupMenu(mode = "cache", brand = "", availableCpuGroups = []) {
+  const isDb = mode === "db";
+  const modeSelectorRow = [
+    {
+      text: isDb ? "💾 Cache" : "✅ 💾 Cache (Active)",
+      callback_data: `mode|set|cache|notebooks_sb_${brand}`,
+    },
+    {
+      text: isDb ? "✅ 🗄️ DB (Active)" : "🗄️ DB",
+      callback_data: `mode|set|db|notebooks_sb_${brand}`,
+    },
+  ];
+
+  const buttons = [modeSelectorRow];
+
+  const groupButtons = availableCpuGroups.map((groupKey) => ({
+    text: `Core / Ryzen ${groupKey}`,
+    callback_data: `cat|${mode}|notebooks|sb_exec|${brand}|${groupKey}`,
+  }));
+
+  for (let i = 0; i < groupButtons.length; i += 2) {
+    if (groupButtons[i + 1]) {
+      buttons.push([groupButtons[i], groupButtons[i + 1]]);
+    } else {
+      buttons.push([groupButtons[i]]);
+    }
+  }
+
+  buttons.push([{ text: "🔙 Հետ", callback_data: `cat|${mode}|notebooks|section|same_brand` }]);
 
   return { reply_markup: { inline_keyboard: buttons } };
 }

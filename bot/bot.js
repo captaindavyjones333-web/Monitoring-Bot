@@ -580,93 +580,319 @@ bot.on("callback_query", async (query) => {
     return;
   }
 
-  // Comparison execution:
-  // Format 1: cat|<mode>|<categoryKey>|brand|<brandIndex>
-  // Format 2: cat|<mode>|<categoryKey>|all
-  // Format 3 (legacy): cat|<categoryKey>|brand|<brandIndex>
-  // Format 4 (legacy): cat|<categoryKey>|all
-  let mode = getUserMode(userId);
-  let categoryKey = null;
-  let action = null;
-  let brandIndex = null;
+  // ─── Notebooks Navigation & Execution ──────────────────────────────────────────
+  // 1. Notebooks Section Selection (Gaming, Standard, Cross Brand): cat|<mode>|notebooks|section|<sectionKey>
+  if (
+    data.startsWith("cat|") &&
+    data.includes("|notebooks|section|") &&
+    !data.endsWith("|same_brand")
+  ) {
+    const [, subMode, , , sectionKey] = data.split("|");
+    const selectedMode =
+      subMode === "cache" || subMode === "db" ? subMode : getUserMode(userId);
+    setUserMode(userId, selectedMode);
+    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
 
-  const parts = data.split("|");
-  if (parts[1] === "cache" || parts[1] === "db") {
-    mode = parts[1];
-    categoryKey = parts[2];
-    action = parts[3]; // 'brand' or 'all'
-    brandIndex = parts[4] != null && parts[4] !== "" ? Number(parts[4]) : null;
-  } else {
-    categoryKey = parts[1];
-    action = parts[2];
-    brandIndex = parts[3] != null && parts[3] !== "" ? Number(parts[3]) : null;
-  }
-
-  if (!CATEGORY_CONFIG[categoryKey]) return;
-
-  if (mode) setUserMode(userId, mode);
-
-  await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
-
-  const modeUpper = mode.toUpperCase();
-  const catLabel = CATEGORY_CONFIG[categoryKey].label;
-
-  try {
-    const result =
-      mode === "db"
-        ? await getDbComparisonGrouped(categoryKey)
-        : await runSendJob(false, false);
-
-    const categoryMessages = result[categoryKey] || [];
-
-    const brandFiltered =
-      action === "brand" && brandIndex != null
-        ? filterMessagesByBrand(categoryMessages, categoryKey, brandIndex)
-        : categoryMessages;
-
-    if (brandFiltered.length === 0) {
-      await bot.sendMessage(
-        userId,
-        `✅ [${modeUpper}] Գնային անհամապատասխանություններ չկան (${catLabel})`,
-        USER_KEYBOARD,
+    try {
+      const { getAvailableNotebookCpuGroups } = await import(
+        "../core/notebookComparator.js"
       );
-      return;
-    }
+      const { buildNotebookCpuGroupMenu } = await import(
+        "../core/categoryMenu.js"
+      );
 
-    // Phones: brand selected → show subgroup buttons instead of sending everything
-    if (categoryKey === "phones" && action === "brand" && brandIndex != null) {
-      const uniqueGroupKeys = [
-        ...new Set(brandFiltered.map((block) => getPhoneGroupKey(block))),
-      ];
-      if (uniqueGroupKeys.length > 1) {
-        const subgroups = uniqueGroupKeys.map((groupKey) => ({
-          groupKey,
-          label: getPhoneSubgroupLabel(groupKey),
-        }));
-        await bot.sendMessage(userId, `📱 ${catLabel} — ընտրեք խումբը`, {
-          parse_mode: "Markdown",
-          ...buildPhoneSubgroupMenu(brandIndex, subgroups, mode),
-        });
+      const sectionLabels = {
+        gaming: "🎮 Gaming",
+        standard: "💼 Standard/Business",
+        cross_brand: "🌐 Cross Brand",
+      };
+      const sectionLabel = sectionLabels[sectionKey] || sectionKey;
+
+      const cpuGroups = getAvailableNotebookCpuGroups(sectionKey);
+
+      if (cpuGroups.length === 0) {
+        await bot.sendMessage(
+          userId,
+          `✅ [${selectedMode.toUpperCase()}] Գնային անհամապատասխանություններ չկան (💻 Notebooks - ${sectionLabel})`,
+          USER_KEYBOARD,
+        );
         return;
       }
+
+      await bot.sendMessage(
+        userId,
+        `💻 Notebooks - ${sectionLabel} — ընտրեք CPU խումբը:`,
+        {
+          parse_mode: "Markdown",
+          ...buildNotebookCpuGroupMenu(selectedMode, sectionKey, cpuGroups),
+        },
+      );
+    } catch (err) {
+      console.error("[bot] ❌ Notebook section selection failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  // 2. Notebooks Section Selection (Same Brand): cat|<mode>|notebooks|section|same_brand
+  if (data.startsWith("cat|") && data.endsWith("|notebooks|section|same_brand")) {
+    const [, subMode] = data.split("|");
+    const selectedMode =
+      subMode === "cache" || subMode === "db" ? subMode : getUserMode(userId);
+    setUserMode(userId, selectedMode);
+    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+
+    try {
+      const { getAvailableNotebookBrands } = await import(
+        "../core/notebookComparator.js"
+      );
+      const { buildNotebookSameBrandMenu } = await import(
+        "../core/categoryMenu.js"
+      );
+
+      const brands = getAvailableNotebookBrands();
+
+      if (brands.length === 0) {
+        await bot.sendMessage(
+          userId,
+          `✅ [${selectedMode.toUpperCase()}] Գնային անհամապատասխանություններ չկան (💻 Notebooks - 🏷️ Same Brand)`,
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `💻 Notebooks - 🏷️ Same Brand — ընտրեք բրենդը:`,
+        {
+          parse_mode: "Markdown",
+          ...buildNotebookSameBrandMenu(selectedMode, brands),
+        },
+      );
+    } catch (err) {
+      console.error("[bot] ❌ Notebook same brand selection failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  // 3. Notebooks Same Brand -> Select Brand: cat|<mode>|notebooks|sb_brand|<brand>
+  if (data.startsWith("cat|") && data.includes("|notebooks|sb_brand|")) {
+    const [, subMode, , , brand] = data.split("|");
+    const selectedMode =
+      subMode === "cache" || subMode === "db" ? subMode : getUserMode(userId);
+    setUserMode(userId, selectedMode);
+    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+
+    try {
+      const { getAvailableNotebookSameBrandCpuGroups } = await import(
+        "../core/notebookComparator.js"
+      );
+      const { buildNotebookSameBrandCpuGroupMenu } = await import(
+        "../core/categoryMenu.js"
+      );
+
+      const cpuGroups = getAvailableNotebookSameBrandCpuGroups(brand);
+
+      if (cpuGroups.length === 0) {
+        await bot.sendMessage(
+          userId,
+          `✅ [${selectedMode.toUpperCase()}] Գնային անհամապատասխանություններ չկան (💻 Notebooks - ${brand})`,
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `💻 Notebooks - 🏷️ Same Brand - ${brand} — ընտրեք CPU խումբը:`,
+        {
+          parse_mode: "Markdown",
+          ...buildNotebookSameBrandCpuGroupMenu(selectedMode, brand, cpuGroups),
+        },
+      );
+    } catch (err) {
+      console.error("[bot] ❌ Notebook same brand CPU group selection failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  // 4. Notebooks Execution for Section + CPU Group: cat|<mode>|notebooks|sub|<section>|<cpuGroup>
+  if (data.startsWith("cat|") && data.includes("|notebooks|sub|")) {
+    const [, subMode, , , sectionKey, cpuGroup] = data.split("|");
+    const selectedMode =
+      subMode === "cache" || subMode === "db" ? subMode : getUserMode(userId);
+    setUserMode(userId, selectedMode);
+    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+
+    try {
+      const sectionLabels = {
+        gaming: "Gaming",
+        standard: "Standard/Business",
+        cross_brand: "Cross Brand",
+      };
+      const sectionLabel = sectionLabels[sectionKey] || sectionKey;
+
+      const { buildNotebookSectionCpuComparisons } = await import(
+        "../core/notebookComparator.js"
+      );
+      const messages = buildNotebookSectionCpuComparisons(sectionKey, cpuGroup);
+
+      if (messages.length === 0) {
+        await bot.sendMessage(
+          userId,
+          `✅ [${selectedMode.toUpperCase()}] Գնային անհամապատասխանություններ չկան (💻 Notebooks - ${sectionLabel} - Core/Ryzen ${cpuGroup})`,
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `🚨 [${selectedMode.toUpperCase()}] ${messages.length} համընկնում (💻 Notebooks - ${sectionLabel} - Core/Ryzen ${cpuGroup})`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(messages, userId);
+    } catch (err) {
+      console.error("[bot] ❌ Notebook CPU group execution failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+  // 5. Notebooks Execution for Same Brand + Brand + CPU Group: cat|<mode>|notebooks|sb_exec|<brand>|<cpuGroup>
+  if (data.startsWith("cat|") && data.includes("|notebooks|sb_exec|")) {
+    const [, subMode, , , brand, cpuGroup] = data.split("|");
+    const selectedMode =
+      subMode === "cache" || subMode === "db" ? subMode : getUserMode(userId);
+    setUserMode(userId, selectedMode);
+    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+
+    try {
+      const { buildNotebookSameBrandCpuComparisons } = await import(
+        "../core/notebookComparator.js"
+      );
+      const messages = buildNotebookSameBrandCpuComparisons(brand, cpuGroup);
+
+      if (messages.length === 0) {
+        await bot.sendMessage(
+          userId,
+          `✅ [${selectedMode.toUpperCase()}] Գնային անհամապատասխանություններ չկան (💻 Notebooks - ${brand} - Core/Ryzen ${cpuGroup})`,
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      await bot.sendMessage(
+        userId,
+        `🚨 [${selectedMode.toUpperCase()}] ${messages.length} համընկնում (💻 Notebooks - 🏷️ ${brand} - Core/Ryzen ${cpuGroup})`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(messages, userId);
+    } catch (err) {
+      console.error("[bot] ❌ Notebook same brand execution failed:", err.message);
+      await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);
+    }
+    return;
+  }
+
+    // Comparison execution:
+    // Format 1: cat|<mode>|<categoryKey>|brand|<brandIndex>
+    // Format 2: cat|<mode>|<categoryKey>|all
+    // Format 3 (legacy): cat|<categoryKey>|brand|<brandIndex>
+    // Format 4 (legacy): cat|<categoryKey>|all
+    let mode = getUserMode(userId);
+    let categoryKey = null;
+    let action = null;
+    let brandIndex = null;
+
+    const parts = data.split("|");
+    if (parts[1] === "cache" || parts[1] === "db") {
+      mode = parts[1];
+      categoryKey = parts[2];
+      action = parts[3]; // 'brand' or 'all'
+      brandIndex =
+        parts[4] != null && parts[4] !== "" ? Number(parts[4]) : null;
+    } else {
+      categoryKey = parts[1];
+      action = parts[2];
+      brandIndex =
+        parts[3] != null && parts[3] !== "" ? Number(parts[3]) : null;
     }
 
-    const messages = brandFiltered;
+    if (!CATEGORY_CONFIG[categoryKey]) return;
 
-    await bot.sendMessage(
-      userId,
-      `🚨 [${modeUpper}] ${messages.length} անհամապատասխանություն հայտնաբերվել է (${catLabel})`,
-      USER_KEYBOARD,
-    );
-    await sendAlerts(messages, userId);
-  } catch (err) {
-    console.error(`[bot] ❌ ${modeUpper} Category check failed:`, err.message);
-    await bot.sendMessage(
-      userId,
-      `❌ [${modeUpper}] Սխալ: ` + err.message,
-      USER_KEYBOARD,
-    );
-  }
+    if (mode) setUserMode(userId, mode);
+
+    await bot.deleteMessage(userId, query.message.message_id).catch(() => {});
+
+    const modeUpper = mode.toUpperCase();
+    const catLabel = CATEGORY_CONFIG[categoryKey].label;
+
+    try {
+      const result =
+        mode === "db"
+          ? await getDbComparisonGrouped(categoryKey)
+          : await runSendJob(false, false);
+
+      const categoryMessages = result[categoryKey] || [];
+
+      const brandFiltered =
+        action === "brand" && brandIndex != null
+          ? filterMessagesByBrand(categoryMessages, categoryKey, brandIndex)
+          : categoryMessages;
+
+      if (brandFiltered.length === 0) {
+        await bot.sendMessage(
+          userId,
+          `✅ [${modeUpper}] Գնային անհամապատասխանություններ չկան (${catLabel})`,
+          USER_KEYBOARD,
+        );
+        return;
+      }
+
+      // Phones: brand selected → show subgroup buttons instead of sending everything
+      if (
+        categoryKey === "phones" &&
+        action === "brand" &&
+        brandIndex != null
+      ) {
+        const uniqueGroupKeys = [
+          ...new Set(brandFiltered.map((block) => getPhoneGroupKey(block))),
+        ];
+        if (uniqueGroupKeys.length > 1) {
+          const subgroups = uniqueGroupKeys.map((groupKey) => ({
+            groupKey,
+            label: getPhoneSubgroupLabel(groupKey),
+          }));
+          await bot.sendMessage(userId, `📱 ${catLabel} — ընտրեք խումբը`, {
+            parse_mode: "Markdown",
+            ...buildPhoneSubgroupMenu(brandIndex, subgroups, mode),
+          });
+          return;
+        }
+      }
+
+      const messages = brandFiltered;
+
+      await bot.sendMessage(
+        userId,
+        `🚨 [${modeUpper}] ${messages.length} անհամապատասխանություն հայտնաբերվել է (${catLabel})`,
+        USER_KEYBOARD,
+      );
+      await sendAlerts(messages, userId);
+    } catch (err) {
+      console.error(
+        `[bot] ❌ ${modeUpper} Category check failed:`,
+        err.message,
+      );
+      await bot.sendMessage(
+        userId,
+        `❌ [${modeUpper}] Սխալ: ` + err.message,
+        USER_KEYBOARD,
+      );
+    }
 });
 
 // ─── Users list ───────────────────────────────────────────────────────────────

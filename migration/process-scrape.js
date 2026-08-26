@@ -484,6 +484,76 @@ async function run() {
       if (!item.url) stats.skippedNoUrl += 1;
     }
 
+    // ── Bulk Status Synchronization for Missing Listings ─────────────────
+    // For each (storeId, categoryId) processed in this scrape batch, any listing currently
+    // in the DB with status = 'active' whose URL is NOT in the latest scrape is updated
+    // to status = 'missing_from_category'.
+    const urlsByStoreAndCategory = new Map();
+    for (const item of raw) {
+      const storeId = storeIdByName[item.source];
+      if (!storeId) continue;
+      const bucket = detectBucket(item.name, item.category);
+      const categorySlug = CATEGORY_SLUG_MAP[bucket];
+      const categoryId = categoryIdBySlug[categorySlug] ?? null;
+      if (!categoryId || !item.url) continue;
+
+      const scKey = `${storeId}||${categoryId}`;
+      if (!urlsByStoreAndCategory.has(scKey)) {
+        urlsByStoreAndCategory.set(scKey, {
+          storeId,
+          categoryId,
+          storeName: item.source,
+          categorySlug,
+          urls: new Set(),
+        });
+      }
+      urlsByStoreAndCategory.get(scKey).urls.add(item.url);
+    }
+
+    let totalMarkedMissing = 0;
+    for (const { storeId, categoryId, storeName, categorySlug, urls } of urlsByStoreAndCategory.values()) {
+      const urlArray = Array.from(urls);
+      if (dryRun) {
+        const countRes = await client.query(
+          `SELECT COUNT(*) AS count
+           FROM store_listings sl
+           JOIN products p ON p.id = sl.product_id
+           WHERE sl.store_id = $1
+             AND p.category_id = $2
+             AND sl.status = 'active'
+             AND sl.url IS NOT NULL
+             AND NOT (sl.url = ANY($3::text[]))`,
+          [storeId, categoryId, urlArray],
+        );
+        const count = Number(countRes.rows[0]?.count || 0);
+        if (count > 0) {
+          console.log(`  [${storeName} / ${categorySlug}] ${count} active listing(s) would be marked 'missing_from_category'`);
+          totalMarkedMissing += count;
+        }
+      } else {
+        const updateRes = await client.query(
+          `UPDATE store_listings sl
+           SET status = 'missing_from_category',
+               in_category = false,
+               updated_at = now()
+           FROM products p
+           WHERE sl.product_id = p.id
+             AND sl.store_id = $1
+             AND p.category_id = $2
+             AND sl.status = 'active'
+             AND sl.url IS NOT NULL
+             AND NOT (sl.url = ANY($3::text[]))
+           RETURNING sl.id`,
+          [storeId, categoryId, urlArray],
+        );
+        const count = updateRes.rowCount || 0;
+        if (count > 0) {
+          console.log(`  [${storeName} / ${categorySlug}] ${count} active listing(s) marked 'missing_from_category'`);
+          totalMarkedMissing += count;
+        }
+      }
+    }
+
     if (dryRun) {
       console.log("\n--dry-run summary:");
     } else {
@@ -496,6 +566,9 @@ async function run() {
     );
     console.log(
       `  New listings that became a brand-new product: ${stats.newProduct}`,
+    );
+    console.log(
+      `  Listings transitioned to missing_from_category: ${totalMarkedMissing}`,
     );
     if (stats.skippedNoUrl > 0) {
       console.log(

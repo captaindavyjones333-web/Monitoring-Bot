@@ -147,14 +147,9 @@ export async function scrapeNotebookcentreNotebooks() {
   return normalizedOut;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   scrapeNotebookcentreNotebooks().catch((err) => {
     console.error("[notebookcentre] fatal error:", err);
     process.exit(1);
   });
 }
-
-scrapeNotebookcentreNotebooks().catch((err) => {
-  console.error("[notebookcentre] fatal error:", err);
-  process.exit(1);
-});

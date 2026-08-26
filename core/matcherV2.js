@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { canonicalizeCpuRegex } from './ai/normalizeCpuRegex.js';
 import { canonicalizeGpuRegex } from './ai/normalizeGpuRegex.js';
 import { extractModelTokens, sharesModelToken } from './modelKey.js';
@@ -80,19 +81,43 @@ function fullKeysMatch(a, b) {
   return true;
 }
 
-function groupKeysMatch(a, b) {
-  if (!a._fullKey.brand || !b._fullKey.brand) return false;
-  if (a._fullKey.brand !== b._fullKey.brand) return false;
+function floorInches(val) {
+  if (val === null || val === undefined) return null;
+  const num = Number(val);
+  return isNaN(num) ? null : Math.floor(num);
+}
 
-  if (!a._cpuTierGroup || !b._cpuTierGroup) return false;
-  if (a._cpuTierGroup !== b._cpuTierGroup) return false;
+function oledMatches(a, b) {
+  const aOled = isOled(a._fullKey.screen_type);
+  const bOled = isOled(b._fullKey.screen_type);
+  if (aOled || bOled) {
+    return a._fullKey.screen_type === b._fullKey.screen_type;
+  }
+  return true;
+}
 
-  if (a._isGaming !== b._isGaming) return false; // never cross gaming/non-gaming
+function storageMatches(a, b) {
+  if (!a._fullKey.storage_gb || !b._fullKey.storage_gb) return false;
+  if (a._fullKey.storage_gb !== b._fullKey.storage_gb) return false;
 
-  const eitherOled = isOled(a._fullKey.screen_type) || isOled(b._fullKey.screen_type);
-  if (eitherOled && a._fullKey.screen_type !== b._fullKey.screen_type) return false;
+  const aType = a._fullKey.storage_type || 'SSD';
+  const bType = b._fullKey.storage_type || 'SSD';
+  // SSD and HDD must NEVER match
+  if (aType !== bType) return false;
 
   return true;
+}
+
+function ramMatches(a, b) {
+  if (!a._fullKey.ram_gb || !b._fullKey.ram_gb) return false;
+  return a._fullKey.ram_gb === b._fullKey.ram_gb;
+}
+
+function screenInchesMatches(a, b) {
+  const aInches = floorInches(a._fullKey.screen_inches);
+  const bInches = floorInches(b._fullKey.screen_inches);
+  if (aInches === null || bInches === null) return false;
+  return aInches === bInches;
 }
 
 /**
@@ -121,47 +146,116 @@ function formatEntry(p) {
   };
 }
 
+const COMPETITOR_FILES = [
+  'notebookcentre.json',
+  'allsell.json',
+  '3dplanet.json',
+];
+
 export function runMatcherV2() {
   const redstore = loadStore('redstore.json').map(prepare);
-  const notebookcentre = loadStore('notebookcentre.json').map(prepare);
+  const competitors = COMPETITOR_FILES.flatMap((file) => loadStore(file)).map(prepare);
 
-  console.log(`[matcherV2] ${redstore.length} redstore vs ${notebookcentre.length} notebookcentre products`);
+  console.log(`[matcherV2] ${redstore.length} redstore vs ${competitors.length} competitor products (${COMPETITOR_FILES.join(', ')})`);
 
   const full_match = [];
-  const non_gaming_group_match = [];
-  const gaming_group_match = [];
+  const gaming_same_brand = [];
+  const gaming_cross_brand = [];
+  const non_gaming_same_brand = [];
+  const non_gaming_cross_brand = [];
 
   const fullMatchPairKeys = new Set();
 
-  // Tier 1
+  // Tier 1: Strict full match
   for (const a of redstore) {
-    for (const b of notebookcentre) {
+    for (const b of competitors) {
       const tokenLink = sharesModelToken(a._modelTokens, b._modelTokens);
       if (tokenLink !== true) continue;
       if (!fullKeysMatch(a, b)) continue;
 
-      full_match.push({ a: formatEntry(a), b: formatEntry(b) });
-      fullMatchPairKeys.add(`${a.id}::${b.id}`);
+      const sameBrand = a._fullKey.brand && b._fullKey.brand && a._fullKey.brand === b._fullKey.brand;
+
+      full_match.push({
+        a: formatEntry(a),
+        b: formatEntry(b),
+        match_type: 'full_match',
+        brand: a._fullKey.brand || a.brand,
+        cpu_group: a._cpuTierGroup || null,
+        is_gaming: a._isGaming,
+        same_brand: !!sameBrand,
+      });
+      fullMatchPairKeys.add(`${a.id}::${b.store}::${b.id}`);
     }
   }
 
-  // Tier 2 / 3 — skip anything already in tier 1
+  // Tier 2 & 3: Group matches
   for (const a of redstore) {
-    for (const b of notebookcentre) {
-      if (fullMatchPairKeys.has(`${a.id}::${b.id}`)) continue;
-      if (!groupKeysMatch(a, b)) continue;
+    for (const b of competitors) {
+      const pairKey = `${a.id}::${b.store}::${b.id}`;
+      if (fullMatchPairKeys.has(pairKey)) continue;
 
-      const entry = { a: formatEntry(a), b: formatEntry(b) };
-      if (a._isGaming) gaming_group_match.push(entry);
-      else non_gaming_group_match.push(entry);
+      // Common specs check
+      if (!a._cpuTierGroup || !b._cpuTierGroup || a._cpuTierGroup !== b._cpuTierGroup) continue;
+      if (!ramMatches(a, b)) continue;
+      if (!storageMatches(a, b)) continue;
+      if (!screenInchesMatches(a, b)) continue;
+      if (!oledMatches(a, b)) continue;
+
+      const sameBrand = a._fullKey.brand && b._fullKey.brand && a._fullKey.brand === b._fullKey.brand;
+
+      // 1. Gaming Match: both have RTX and exact GPU model matches
+      if (a._isGaming && b._isGaming) {
+        if (!a._gpu || !b._gpu || a._gpu !== b._gpu) continue;
+
+        const entry = {
+          a: formatEntry(a),
+          b: formatEntry(b),
+          is_gaming: true,
+          same_brand: !!sameBrand,
+          brand: a._fullKey.brand || a.brand,
+          cpu_group: a._cpuTierGroup || null,
+        };
+
+        if (sameBrand) {
+          gaming_same_brand.push(entry);
+        } else {
+          gaming_cross_brand.push(entry);
+        }
+      }
+      // 2. Non-gaming Match: neither has RTX
+      else if (!a._isGaming && !b._isGaming) {
+        const entry = {
+          a: formatEntry(a),
+          b: formatEntry(b),
+          is_gaming: false,
+          same_brand: !!sameBrand,
+          brand: a._fullKey.brand || a.brand,
+          cpu_group: a._cpuTierGroup || null,
+        };
+
+        if (sameBrand) {
+          non_gaming_same_brand.push(entry);
+        } else {
+          non_gaming_cross_brand.push(entry);
+        }
+      }
     }
   }
 
   console.log(`[matcherV2] full_match: ${full_match.length}`);
-  console.log(`[matcherV2] non_gaming_group_match: ${non_gaming_group_match.length}`);
-  console.log(`[matcherV2] gaming_group_match: ${gaming_group_match.length}`);
+  console.log(`[matcherV2] gaming_same_brand: ${gaming_same_brand.length}`);
+  console.log(`[matcherV2] gaming_cross_brand: ${gaming_cross_brand.length}`);
+  console.log(`[matcherV2] non_gaming_same_brand: ${non_gaming_same_brand.length}`);
+  console.log(`[matcherV2] non_gaming_cross_brand: ${non_gaming_cross_brand.length}`);
 
-  const output = { full_match, non_gaming_group_match, gaming_group_match };
+  const output = {
+    full_match,
+    gaming_same_brand,
+    gaming_cross_brand,
+    non_gaming_same_brand,
+    non_gaming_cross_brand,
+  };
+
   const outPath = path.join(CACHE_DIR, 'matches-v2.json');
   fs.writeFileSync(outPath, JSON.stringify(output, null, 2));
   console.log(`[matcherV2] written to ${outPath}`);
@@ -169,6 +263,6 @@ export function runMatcherV2() {
   return output;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  runMatcherV2();
 }
-runMatcherV2();

@@ -1,5 +1,6 @@
 import { loadAllCaches, clearAllCaches } from "../core/cache_manager.js";
 import { runComparison } from "../core/comparator.js";
+import { buildNotebookComparisons } from "../core/notebookComparator.js";
 
 let previousAlertKeys = new Set();
 
@@ -7,7 +8,9 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
   console.log("[send] 📦 Loading cache...");
   const allProducts = loadAllCaches();
 
-  if (allProducts.length === 0) {
+  const notebookMessages = buildNotebookComparisons();
+
+  if (allProducts.length === 0 && notebookMessages.length === 0) {
     console.warn("[send] ⚠️  No products in cache. Run scrape job first.");
     return {
       phones: [],
@@ -20,10 +23,11 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       dyson: [],
       gaming: [],
       airconditioners: [],
+      notebooks: [],
     };
   }
 
-  console.log(`[send] 🔍 Comparing ${allProducts.length} products...`);
+  console.log(`[send] 🔍 Comparing ${allProducts.length} products (+ ${notebookMessages.length} notebook matches)...`);
   let comparisonResult;
   try {
     comparisonResult = runComparison(allProducts);
@@ -32,10 +36,11 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
     console.error(err.stack);
     throw err;
   }
-  const { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming, airconditioners } = runComparison(allProducts);
+  const { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming, airconditioners } = comparisonResult;
+  const notebooks = notebookMessages;
 
   console.log(
-    `[send] 🚨 ${phones.length} phone, ${tablets.length} tablet, ${watches.length} watch, ${headphones.length} headphone, ${macbooks.length} macbook, ${speakers.length} speaker, ${tvs.length} tv, ${dyson.length} dyson, ${gaming.length} gaming, ${airconditioners.length} airconditioner`,
+    `[send] 🚨 ${phones.length} phone, ${tablets.length} tablet, ${watches.length} watch, ${headphones.length} headphone, ${macbooks.length} macbook, ${speakers.length} speaker, ${tvs.length} tv, ${dyson.length} dyson, ${gaming.length} gaming, ${airconditioners.length} airconditioner, ${notebooks.length} notebooks`,
   );
 
   const getKey = (msg) =>
@@ -44,7 +49,7 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       .split("\n")[0]
       .trim();
 
-  let result = { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming, airconditioners };
+  let result = { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming, airconditioners, notebooks };
 
   if (onlyNew) {
     result = {
@@ -58,6 +63,7 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       dyson: dyson.filter((m) => !previousAlertKeys.has(getKey(m))),
       gaming: gaming.filter((m) => !previousAlertKeys.has(getKey(m))),
       airconditioners: airconditioners.filter((m) => !previousAlertKeys.has(getKey(m))),
+      notebooks: notebooks.filter((m) => !previousAlertKeys.has(getKey(m))),
     };
   }
 
@@ -73,7 +79,7 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       ...dyson,
       ...gaming,
       ...airconditioners,
-
+      ...notebooks,
     ].map(getKey),
   );
 

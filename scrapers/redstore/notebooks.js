@@ -88,7 +88,9 @@ export async function scrapeRedstoreNotebooks() {
   return normalizedOut;
 }
 
-scrapeRedstoreNotebooks().catch((err) => {
-  console.error("[redstore/notebooks] fatal error:", err);
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  scrapeRedstoreNotebooks().catch((err) => {
+    console.error("[redstore/notebooks] fatal error:", err);
+    process.exit(1);
+  });
+}
