@@ -33,6 +33,11 @@ export const SOURCE_LABELS = {
   vesta: "Vesta",
   vlv: "VLV",
   vega: "Vega",
+  notebookcentre: "NBCentre",
+  dgcomp: "DGComp",
+  notebookmall: "NBMall",
+  smartbox: "SB",
+  miarmenia: "MI"
 };
 
 const SOURCE_ORDER_BY_CATEGORY = {
@@ -103,6 +108,12 @@ const SOURCE_ORDER_BY_CATEGORY = {
     "eldorado",
   ],
   airconditioners: ["redstore", "allsell", "eldorado", "vesta", "vlv"],
+  camera: ["redstore", "3dplanet", "zigzag", "vlv", "eldorado"],
+  cleaners: ["redstore", "yerevanmobile", "allsell", "3dplanet", "zigzag", "vlv"],
+  printers: ["redstore", "allsell", "zigzag", "notebookcentre", "dgcomp", "notebookmall"],
+  monitors: ["redstore", "notebookcentre", "dgcomp", "notebookmall", "miarmenia", "smartbox", "zigzag"],
+  projectors: ["redstore", "notebookcentre", "dgcomp", "notebookmall"],
+  drones: ["redstore", "yerevanmobile", "allsell", "3dplanet"],
 };
 
 function hasAnyCompetitorEntry(sources) {
@@ -196,6 +207,97 @@ function formatPricePair(
   return `${cashStr} - ${instStr}`;
 }
 
+export function buildSingleProductComparison(group, category) {
+  const rs = group.sources["redstore"];
+  if (!rs) return null;
+
+  const rsCash = rs.cash_price;
+  const rsInstallment = rs.installment_price;
+
+  const hasCompetitor = Object.keys(group.sources).some(
+    (source) => source !== "redstore" && group.sources[source],
+  );
+  if (!hasCompetitor) return null;
+
+  const baseOrder =
+    SOURCE_ORDER_BY_CATEGORY[category] || SOURCE_ORDER_BY_CATEGORY["phones"];
+  const storesToDisplay = [...baseOrder];
+  for (const s of Object.keys(group.sources)) {
+    if (s !== "redstore" && !storesToDisplay.includes(s) && SOURCE_LABELS[s]) {
+      storesToDisplay.push(s);
+    }
+  }
+
+  let hasAlert = false;
+  const lines = [];
+
+  const displayName = (rs.name || group.canonicalTitle || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  lines.push(`*${displayName}*`);
+
+  for (const source of storesToDisplay) {
+    const entry = group.sources[source];
+    const label = SOURCE_LABELS[source];
+    if (!label) continue;
+
+    if (!entry) {
+      lines.push(`${label} - ❌`);
+      continue;
+    }
+
+    const isRS = source === "redstore";
+    const priceStr = formatPricePair(
+      entry.cash_price,
+      entry.installment_price,
+      rsCash,
+      rsInstallment,
+      isRS,
+      group.sources,
+      storesToDisplay,
+    );
+    lines.push(`${label} - ${priceStr}`);
+
+    const installStr = formatInstallation(entry.installation_price);
+    if (installStr) lines.push(`  + Տեղադրում՝ ${installStr}`);
+
+    if (!isRS) {
+      if (entry.cash_price) {
+        const flag = getFlag(rsCash, entry.cash_price);
+        if (
+          flag === "‼️" ||
+          flag === "♦️" ||
+          flag === "🏷" ||
+          flag === "✅"
+        ) {
+          hasAlert = true;
+        }
+      }
+      if (entry.installment_price) {
+        const flag = getFlag(
+          rsInstallment ?? rsCash,
+          entry.installment_price,
+        );
+        if (
+          flag === "‼️" ||
+          flag === "♦️" ||
+          flag === "🏷" ||
+          flag === "✅"
+        ) {
+          hasAlert = true;
+        }
+      }
+    }
+  }
+
+  return {
+    key: displayName,
+    productId: group.productId,
+    hasAlert,
+    message: lines.join("\n"),
+  };
+}
+
 // ─── Standard (name-based) comparison, used for phones/tablets/watches/headphones ──
 
 function parseStorageValue(label) {
@@ -248,17 +350,26 @@ export function buildComparisons(groups, category) {
     const rs = group.sources["redstore"];
     if (!rs) continue;
 
-    const modelKey = getModelKey(key);
+    const normKey = group?.normalized || key;
+    const modelKey = getModelKey(normKey);
     if (!buckets.has(modelKey)) buckets.set(modelKey, []);
 
-    const storageLabel = getStorageLabel(key);
+    const storageLabel = getStorageLabel(normKey);
     buckets.get(modelKey).push({ storageLabel, group });
   }
 
   const results = [];
 
   for (const [modelKey, tiers] of buckets) {
-    const sourceOrder = getSourceOrderForProduct(modelKey, category);
+    const baseSourceOrder = getSourceOrderForProduct(modelKey, category);
+    const sourceOrder = [...baseSourceOrder];
+    for (const { group } of tiers) {
+      for (const s of Object.keys(group.sources)) {
+        if (s !== "redstore" && !sourceOrder.includes(s) && SOURCE_LABELS[s]) {
+          sourceOrder.push(s);
+        }
+      }
+    }
     tiers.sort(
       (a, b) =>
         parseStorageValue(a.storageLabel) - parseStorageValue(b.storageLabel),
@@ -522,7 +633,15 @@ function getMacbookSeriesKey(name, code) {
 }
 
 export function buildMacbookComparisons(groups) {
-  const sourceOrder = SOURCE_ORDER_BY_CATEGORY.macbooks;
+  const baseSourceOrder = SOURCE_ORDER_BY_CATEGORY.macbooks;
+  const sourceOrder = [...baseSourceOrder];
+  for (const [, grp] of groups) {
+    for (const s of Object.keys(grp.sources || {})) {
+      if (s !== "redstore" && !sourceOrder.includes(s) && SOURCE_LABELS[s]) {
+        sourceOrder.push(s);
+      }
+    }
+  }
 
   // ── Step 1: build per-code records ──────────────────────────────────────
   const perCodeResults = [];
@@ -773,11 +892,10 @@ export function buildTvComparisons(groups) {
     let hasAlert = false;
     const lines = [];
 
-    const displayName = rs.name
-      .replace(/\(.*?\)/g, "")
+    const displayName = (rs.name || group.canonicalTitle || "")
       .replace(/\s+/g, " ")
       .trim();
-    lines.push(`*${displayName} [${group.code}]*`);
+    lines.push(`*${displayName}*`);
 
     for (const source of sourceOrder) {
       const entry = group.sources[source];
@@ -1387,11 +1505,90 @@ function getBrandGroupKey(category, message) {
     return "other";
   }
 
+  if (category === "tvs") {
+    if (/samsung/i.test(name)) return "samsung";
+    if (/\bsony\b/i.test(name)) return "sony";
+    if (/\blg\b/i.test(name)) return "lg";
+    if (/xiaomi/i.test(name)) return "xiaomi";
+    if (/evvoli/i.test(name)) return "evvoli";
+    return "other";
+  }
+
+  if (category === "airconditioners" || category === "air-conditioners") {
+    if (/hisense/i.test(name)) return "hisense";
+    if (/midea/i.test(name)) return "midea";
+    if (/samsung/i.test(name)) return "samsung";
+    return "other";
+  }
+
+  if (category === "camera") {
+    if (/canon/i.test(name)) return "canon";
+    if (/fujifilm|instax/i.test(name)) return "fujifilm";
+    if (/\bdji\b|osmo/i.test(name)) return "dji";
+    if (/insta360/i.test(name)) return "insta360";
+    if (/\bsony\b/i.test(name)) return "sony";
+    if (/\bxiaomi\b/i.test(name)) return "xiaomi";
+    if (/\bnikon\b/i.test(name)) return "nikon";
+    if (/gopro/i.test(name)) return "gopro";
+    return "other";
+  }
+
+  if (category === "cleaners") {
+    if (/dreame/i.test(name)) return "dreame";
+    if (/karcher|k\xc3\xa4rcher/i.test(name)) return "karcher";
+    if (/xiaomi|lydsto/i.test(name)) return "xiaomi";
+    if (/dyson/i.test(name)) return "dyson";
+    if (/bosch/i.test(name)) return "bosch";
+    if (/miele/i.test(name)) return "miele";
+    if (/roborock/i.test(name)) return "roborock";
+    if (/samsung/i.test(name)) return "samsung";
+    if (/\blg\b/i.test(name)) return "lg";
+    return "other";
+  }
+
+  if (category === "printers") {
+    if (/\bhp\b|laserjet/i.test(name)) return "hp";
+    if (/canon/i.test(name)) return "canon";
+    if (/epson/i.test(name)) return "epson";
+    if (/fujifilm/i.test(name)) return "fujifilm";
+    if (/xiaomi/i.test(name)) return "xiaomi";
+    return "other";
+  }
+
+  if (category === "monitors") {
+    if (/samsung/i.test(name)) return "samsung";
+    if (/\blg\b/i.test(name)) return "lg";
+    if (/dell/i.test(name)) return "dell";
+    if (/hp/i.test(name)) return "hp";
+    if (/asus/i.test(name)) return "asus";
+    if (/acer/i.test(name)) return "acer";
+    if (/benq/i.test(name)) return "benq";
+    if (/viewsonic/i.test(name)) return "viewsonic";
+    if (/philips/i.test(name)) return "philips";
+    if (/msi/i.test(name)) return "msi";
+    return "other";
+  }
+
+  if (category === "projectors") {
+    if (/epson/i.test(name)) return "epson";
+    if (/benq/i.test(name)) return "benq";
+    if (/xgimi/i.test(name)) return "xgimi";
+    if (/wanbo/i.test(name)) return "wanbo";
+    if (/optoma/i.test(name)) return "optoma";
+    return "other";
+  }
+
+  if (category === "drones") {
+    if (/\bdji\b|mavic|avata|phantom|inspire/i.test(name)) return "dji";
+    if (/autel/i.test(name)) return "autel";
+    return "other";
+  }
+
   if (category === "dyson") {
     return "dyson";
   }
 
-  return message;
+  return "other";
 }
 
 export function groupCategoryAlertsByBrand(category, messages) {
@@ -1443,6 +1640,36 @@ export function groupCategoryAlertsByBrand(category, messages) {
       "hori",
       "other",
     ],
+    tvs: ["samsung", "sony", "lg", "xiaomi", "evvoli", "other"],
+    airconditioners: ["hisense", "midea", "samsung", "other"],
+    "air-conditioners": ["hisense", "midea", "samsung", "other"],
+    camera: [
+      "canon",
+      "fujifilm",
+      "dji",
+      "insta360",
+      "sony",
+      "xiaomi",
+      "nikon",
+      "gopro",
+      "other",
+    ],
+    cleaners: [
+      "dreame",
+      "karcher",
+      "xiaomi",
+      "dyson",
+      "bosch",
+      "miele",
+      "roborock",
+      "samsung",
+      "lg",
+      "other",
+    ],
+    printers: ["hp", "canon", "epson", "fujifilm", "xiaomi", "other"],
+    monitors: ["samsung", "lg", "dell", "hp", "asus", "acer", "benq", "viewsonic", "philips", "msi", "other"],
+    projectors: ["epson", "benq", "xgimi", "wanbo", "optoma", "other"],
+    drones: ["dji", "autel", "other"],
     dyson: ["dyson"],
   }[category];
 
@@ -1488,11 +1715,19 @@ export function splitAlertsByCategory(comparisons) {
     dyson: [],
     gaming: [],
     airconditioners: [],
+    camera: [],
+    cleaners: [],
+    printers: [],
+    monitors: [],
+    projectors: [],
+    drones: [],
   };
 
   for (const item of alerts) {
     const category = detectCategory(item.message);
-    buckets[category].push(item.message);
+    if (buckets[category]) {
+      buckets[category].push(item.message);
+    }
   }
 
   return {
@@ -1502,12 +1737,19 @@ export function splitAlertsByCategory(comparisons) {
     headphones: groupCategoryAlertsByBrand("headphones", buckets.headphones),
     macbooks: buckets.macbooks.map((msg, i) => `${i + 1}. ${msg}`),
     speakers: groupCategoryAlertsByBrand("speakers", buckets.speakers),
-    tvs: buckets.tvs.map((msg, i) => `${i + 1}. ${msg}`),
+    tvs: groupCategoryAlertsByBrand("tvs", buckets.tvs),
     dyson: buckets.dyson.map((msg, i) => `${i + 1}. ${msg}`),
     gaming: groupCategoryAlertsByBrand("gaming", buckets.gaming),
-    airconditioners: buckets.airconditioners.map(
-      (msg, i) => `${i + 1}. ${msg}`,
+    airconditioners: groupCategoryAlertsByBrand(
+      "airconditioners",
+      buckets.airconditioners,
     ),
+    camera: groupCategoryAlertsByBrand("camera", buckets.camera),
+    cleaners: groupCategoryAlertsByBrand("cleaners", buckets.cleaners),
+    printers: groupCategoryAlertsByBrand("printers", buckets.printers),
+    monitors: groupCategoryAlertsByBrand("monitors", buckets.monitors),
+    projectors: groupCategoryAlertsByBrand("projectors", buckets.projectors),
+    drones: groupCategoryAlertsByBrand("drones", buckets.drones),
   };
 }
 
@@ -1559,6 +1801,12 @@ export function runComparison(allProducts) {
     watches: [],
     headphones: [],
     speakers: [],
+    camera: [],
+    cleaners: [],
+    printers: [],
+    monitors: [],
+    projectors: [],
+    drones: [],
   };
   for (const p of remaining) {
     const cat = detectCategory(p.name);

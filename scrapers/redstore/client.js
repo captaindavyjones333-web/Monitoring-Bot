@@ -18,7 +18,7 @@ export async function fetchBrandProducts(categoryEndpoint, brandId, extraParams 
   });
 
   const productsObj = firstRes.data?.products || firstRes.data?.data?.products;
-  const { last_page, data: firstPage } = productsObj;
+  const { last_page, data: firstPage } = productsObj || {};
   if (!last_page || last_page === 1) return firstPage || [];
 
   const rest = await Promise.all(
@@ -26,6 +26,42 @@ export async function fetchBrandProducts(categoryEndpoint, brandId, extraParams 
       axios
         .get(baseUrl, {
           params: { view: "all", "brand_id[]": brandId, page: i + 2, ...extraParams },
+          headers,
+        })
+        .then((r) => {
+          const pObj = r.data?.products || r.data?.data?.products;
+          return pObj?.data || [];
+        }),
+    ),
+  );
+
+  return [...firstPage, ...rest.flat()];
+}
+
+/**
+ * Fetch every page of a category without brand filtering using the Redstore Export API.
+ * @param {string} categoryEndpoint - e.g. "photo-and-video-recorders"
+ * @param {object} [extraParams] - optional extra query params merged into every request
+ * @returns {Promise<Array>} raw product objects from the API
+ */
+export async function fetchCategoryProducts(categoryEndpoint, extraParams = {}) {
+  const baseUrl = `https://admin.redstore.am/api/v1/export/catalog/${categoryEndpoint}/category`;
+  const headers = { "X-Export-Key": process.env.REDSTORE_EXPORT_KEY || "" };
+
+  const firstRes = await axios.get(baseUrl, {
+    params: { view: "all", page: 1, ...extraParams },
+    headers,
+  });
+
+  const productsObj = firstRes.data?.products || firstRes.data?.data?.products;
+  const { last_page, data: firstPage } = productsObj || {};
+  if (!last_page || last_page === 1) return firstPage || [];
+
+  const rest = await Promise.all(
+    Array.from({ length: last_page - 1 }, (_, i) =>
+      axios
+        .get(baseUrl, {
+          params: { view: "all", page: i + 2, ...extraParams },
           headers,
         })
         .then((r) => {
@@ -75,4 +111,34 @@ export async function fetchAllBrands(categoryEndpoint, brandIds, normalize, extr
   }
 
   return results;
+}
+
+/**
+ * Fetch all products in a category without brand filtering.
+ * @param {string} categoryEndpoint
+ * @param {(raw: object) => object} normalize
+ * @param {object} [extraParams] - optional extra query params
+ * @returns {Promise<Array>} normalized product objects
+ */
+export async function fetchCategory(categoryEndpoint, normalize, extraParams = {}) {
+  try {
+    const products = await fetchCategoryProducts(categoryEndpoint, extraParams);
+    return products
+      .map((raw) => {
+        try {
+          return normalize(raw);
+        } catch (err) {
+          console.warn(
+            `[redstore/${categoryEndpoint}] skipped malformed product: ${err.message}`,
+          );
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch (err) {
+    console.error(
+      `[redstore/${categoryEndpoint}] failed to fetch category ${categoryEndpoint}: ${err.message}`,
+    );
+    return [];
+  }
 }

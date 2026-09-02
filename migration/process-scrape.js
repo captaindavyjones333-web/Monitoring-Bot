@@ -60,6 +60,12 @@ const CATEGORY_SLUG_MAP = {
   dyson: "dyson",
   gaming: "gaming",
   airconditioners: "air-conditioners",
+  camera: "camera",
+  cleaners: "cleaners",
+  printers: "printers",
+  projectors: "projectors",
+  drones: "drones",
+  monitors: "monitors",
 };
 
 const SOURCE_PRIORITY = [
@@ -75,6 +81,11 @@ const SOURCE_PRIORITY = [
   "vesta",
   "vlv",
   "vega",
+  "notebookcentre",
+  "dgcomp",
+  "notebookmall",
+  "smartbox",
+  "miarmenia"
 ];
 
 // ── Batch grouping functions matching migrate.js / comparator.js ──
@@ -116,6 +127,12 @@ function assignBatchKeys(rawItems) {
     watches: [],
     headphones: [],
     speakers: [],
+    camera: [],
+    cleaners: [],
+    printers: [],
+    projectors: [],
+    drones: [],
+    monitors: [],
   };
 
   for (const p of rawItems) {
@@ -412,7 +429,8 @@ async function run() {
       let productId = null;
 
       if (key) {
-        // Does an ACTIVE product in this category already have a listing with this exact key?
+        // Does an ACTIVE product in this category already have a listing with this exact key,
+        // AND was NOT explicitly rejected/unmatched by an admin?
         const match = await client.query(
           `SELECT sl.product_id
            FROM store_listings sl
@@ -420,8 +438,17 @@ async function run() {
            WHERE sl.normalized_key = $1
              AND p.status = 'active'
              AND p.category_id = $2
+             AND NOT EXISTS (
+               SELECT 1 FROM rejected_matches rm
+               WHERE rm.product_id = p.id
+                 AND rm.store_id = $3
+                 AND (
+                   (rm.url IS NOT NULL AND $4::text IS NOT NULL AND rm.url = $4::text)
+                   OR (rm.raw_title IS NOT NULL AND rm.raw_title = $5::text)
+                 )
+             )
            LIMIT 1`,
-          [key, categoryIdBySlug[categorySlug] ?? null],
+          [key, categoryIdBySlug[categorySlug] ?? null, storeId, item.url ?? null, item.name],
         );
         if (match.rows.length > 0) {
           productId = match.rows[0].product_id;

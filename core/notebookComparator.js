@@ -34,6 +34,10 @@ const STORE_LABELS = {
   "allsell.am": "Allsell",
   "3dplanet": "3D",
   "3dplanet.am": "3D",
+  "notebookmall.am": "NM",
+  "notebookmall": "NM",
+  "complife.am": "CL",
+  "complife": "CL",
 };
 
 const STORE_TITLES = {
@@ -45,6 +49,10 @@ const STORE_TITLES = {
   "allsell.am": "Allsell",
   "3dplanet": "3DPlanet",
   "3dplanet.am": "3DPlanet",
+  "notebookmall.am": "NotebookMall",
+  "notebookmall": "NotebookMall",
+  "complife.am": "Complife",
+  "complife": "Complife",
 };
 
 function getStoreLabel(store) {

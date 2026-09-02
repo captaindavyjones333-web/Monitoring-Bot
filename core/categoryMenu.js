@@ -77,6 +77,11 @@ export const CATEGORY_CONFIG = {
       { label: "LG", match: /\blg\b/i },
       { label: "Xiaomi", match: /xiaomi/i },
       { label: "Evvoli", match: /evvoli/i },
+      {
+        label: "Այլ",
+        match:
+          /^(?!.*(samsung|\bsony\b|\blg\b|xiaomi|evvoli)).+/i,
+      },
     ],
   },
   dyson: {
@@ -107,6 +112,110 @@ export const CATEGORY_CONFIG = {
       { label: "Hisense", match: /hisense/i },
       { label: "Midea", match: /midea/i },
       { label: "Samsung", match: /samsung/i },
+      {
+        label: "Այլ",
+        match:
+          /^(?!.*(hisense|midea|samsung)).+/i,
+      },
+    ],
+  },
+  camera: {
+    label: "📷 Տեսախցիկներ",
+    brands: [
+      { label: "Canon", match: /canon/i },
+      { label: "Fujifilm", match: /fujifilm|instax/i },
+      { label: "DJI", match: /\bdji\b|osmo/i },
+      { label: "Insta360", match: /insta360/i },
+      { label: "Sony", match: /\bsony\b/i },
+      { label: "Xiaomi", match: /\bxiaomi\b/i },
+      { label: "Nikon", match: /\bnikon\b/i },
+      { label: "GoPro", match: /gopro/i },
+      {
+        label: "Այլ",
+        match:
+          /^(?!.*(canon|fujifilm|instax|\bdji\b|osmo|insta360|\bsony\b|\bxiaomi\b|\bnikon\b|gopro)).+/i,
+      },
+    ],
+  },
+  cleaners: {
+    label: "🧹 Փոշեկուլներ",
+    brands: [
+      { label: "Dreame", match: /dreame/i },
+      { label: "Kärcher", match: /karcher|k\xc3\xa4rcher/i },
+      { label: "Xiaomi", match: /xiaomi|lydsto/i },
+      { label: "Dyson", match: /dyson/i },
+      { label: "Bosch", match: /bosch/i },
+      { label: "Miele", match: /miele/i },
+      { label: "Roborock", match: /roborock/i },
+      { label: "Samsung", match: /samsung/i },
+      { label: "LG", match: /\blg\b/i },
+      {
+        label: "Այլ",
+        match:
+          /^(?!.*(dreame|karcher|k\xc3\xa4rcher|xiaomi|lydsto|dyson|bosch|miele|roborock|samsung|\blg\b)).+/i,
+      },
+    ],
+  },
+  printers: {
+    label: "🖨 Տպիչներ",
+    brands: [
+      { label: "HP", match: /\bhp\b|laserjet/i },
+      { label: "Canon", match: /canon/i },
+      { label: "Epson", match: /epson/i },
+      { label: "Fujifilm", match: /fujifilm/i },
+      { label: "Xiaomi", match: /xiaomi/i },
+      {
+        label: "Այլ",
+        match:
+          /^(?!.*(\bhp\b|laserjet|canon|epson|fujifilm|xiaomi)).+/i,
+      },
+    ],
+  },
+  projectors: {
+    label: "📽 Projectors",
+    brands: [
+      { label: "Epson", match: /epson/i },
+      { label: "BenQ", match: /benq/i },
+      { label: "XGIMI", match: /xgimi/i },
+      { label: "Wanbo", match: /wanbo/i },
+      { label: "Optoma", match: /optoma/i },
+      {
+        label: "Այլ",
+        match:
+          /^(?!.*(epson|benq|xgimi|wanbo|optoma)).+/i,
+      },
+    ],
+  },
+  drones: {
+    label: "🚁 Drones",
+    brands: [
+      { label: "DJI", match: /\bdji\b|mavic|avata|phantom|inspire/i },
+      { label: "Autel", match: /autel/i },
+      {
+        label: "Այլ",
+        match:
+          /^(?!.*(dji|mavic|avata|phantom|inspire|autel)).+/i,
+      },
+    ],
+  },
+  monitors: {
+    label: "🖥 Monitors",
+    brands: [
+      { label: "Samsung", match: /samsung/i },
+      { label: "LG", match: /\blg\b/i },
+      { label: "Dell", match: /dell/i },
+      { label: "HP", match: /\bhp\b/i },
+      { label: "Asus", match: /asus/i },
+      { label: "Acer", match: /acer/i },
+      { label: "BenQ", match: /benq/i },
+      { label: "ViewSonic", match: /viewsonic/i },
+      { label: "Philips", match: /philips/i },
+      { label: "MSI", match: /\bmsi\b/i },
+      {
+        label: "Այլ",
+        match:
+          /^(?!.*(samsung|\blg\b|dell|\bhp\b|asus|acer|benq|viewsonic|philips|\bmsi\b)).+/i,
+      },
     ],
   },
   notebooks: {

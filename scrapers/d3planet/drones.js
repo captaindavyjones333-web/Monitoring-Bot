@@ -3,31 +3,29 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 
 const BASE_URL = "https://3dplanet.am";
-
-const LIST_URLS = ["https://3dplanet.am/store/headset"];
+const LIST_URL = "https://3dplanet.am/hy/store/drone";
 
 const HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
 };
 
-async function getTotalPages(listUrl) {
-  const res = await axios.get(listUrl, { headers: HEADERS });
-  const $ = cheerio.load(res.data);
-  let max = 1;
-  $("a[href*='?page=']").each((_, el) => {
-    const match = $(el)
-      .attr("href")
-      ?.match(/page=(\d+)/);
-    if (match) max = Math.max(max, parseInt(match[1]));
-  });
-  return max;
-}
-
 function buildPageUrl(listUrl, page) {
   if (page === 1) return listUrl;
   const sep = listUrl.includes("?") ? "&" : "?";
   return `${listUrl}${sep}page=${page}`;
+}
+
+async function getTotalPages(listUrl) {
+  const res = await axios.get(listUrl, { headers: HEADERS });
+  const $ = cheerio.load(res.data);
+  let max = 1;
+  $("#paginationWrapper a[href]").each((_, el) => {
+    const href = $(el).attr("href") || "";
+    const match = href.match(/[?&]page=(\d+)/);
+    if (match) max = Math.max(max, parseInt(match[1], 10));
+  });
+  return max;
 }
 
 async function fetchListingPage(listUrl, page) {
@@ -53,16 +51,27 @@ async function fetchListingPage(listUrl, page) {
   return products;
 }
 
-async function getBasePagePrice(puppeteerPage) {
-  try {
-    return await puppeteerPage.$eval("#price", (el) => {
-      const raw = el.getAttribute("data-price") || el.textContent;
-      const cleaned = raw.replace(/[^\d.]/g, "");
-      return cleaned ? parseFloat(cleaned) : null;
-    });
-  } catch {
-    return null;
+async function fetchListing() {
+  const totalPages = await getTotalPages(LIST_URL);
+  console.log(`[3d-drones] ${totalPages} pages`);
+
+  const listingProducts = [];
+  for (let page = 1; page <= totalPages; page++) {
+    const products = await fetchListingPage(LIST_URL, page);
+    console.log(`[3d-drones] Page ${page}: ${products.length} products`);
+    listingProducts.push(...products);
+    await new Promise((r) => setTimeout(r, 300));
   }
+
+  const seenUrls = new Set();
+  const unique = [];
+  for (const p of listingProducts) {
+    if (!seenUrls.has(p.url)) {
+      seenUrls.add(p.url);
+      unique.push(p);
+    }
+  }
+  return unique;
 }
 
 async function fetchProductPrice(puppeteerPage, baseName, url) {
@@ -73,8 +82,15 @@ async function fetchProductPrice(puppeteerPage, baseName, url) {
     });
     await new Promise((r) => setTimeout(r, 1500));
 
-    const price = await getBasePagePrice(puppeteerPage);
-    if (!price) return null;
+    const cash_price = await puppeteerPage
+      .$eval("#price", (el) => {
+        const raw = el.getAttribute("data-price") || el.textContent;
+        const cleaned = raw ? raw.replace(/[^\d.]/g, "") : null;
+        return cleaned ? parseFloat(cleaned) : null;
+      })
+      .catch(() => null);
+
+    if (!cash_price) return null;
 
     let installment_price = null;
     try {
@@ -92,43 +108,21 @@ async function fetchProductPrice(puppeteerPage, baseName, url) {
 
     return {
       name: baseName,
-      cash_price: price,
+      cash_price,
       installment_price,
       source: "3dplanet",
-      category: "headphones",
+      category: "drones",
       url,
     };
   } catch (err) {
-    console.warn(`[3d-headphones] Failed ${url}: ${err.message}`);
+    console.warn(`[3d-drones] Failed ${url}: ${err.message}`);
     return null;
   }
 }
 
-export async function scrape3DPlanetHeadphones() {
-  const listingProducts = [];
-
-  for (const listUrl of LIST_URLS) {
-    const totalPages = await getTotalPages(listUrl);
-    console.log(`[3d-headphones] ${listUrl}: ${totalPages} pages`);
-    for (let page = 1; page <= totalPages; page++) {
-      const products = await fetchListingPage(listUrl, page);
-      listingProducts.push(...products);
-      await new Promise((r) => setTimeout(r, 300));
-    }
-  }
-
-  const seenUrls = new Set();
-  const unique = [];
-  for (const p of listingProducts) {
-    if (!seenUrls.has(p.url)) {
-      seenUrls.add(p.url);
-      unique.push(p);
-    }
-  }
-
-  console.log(
-    `[3d-headphones] ${unique.length} unique products, fetching details...`,
-  );
+export async function scrape3DPlanetDrones() {
+  const listingProducts = await fetchListing();
+  console.log(`[3d-drones] ${listingProducts.length} unique products found`);
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -149,9 +143,9 @@ export async function scrape3DPlanetHeadphones() {
 
   const results = [];
   try {
-    for (let i = 0; i < unique.length; i++) {
-      const { name, url } = unique[i];
-      console.log(`[3d-headphones] (${i + 1}/${unique.length}) ${name}`);
+    for (let i = 0; i < listingProducts.length; i++) {
+      const { name, url } = listingProducts[i];
+      console.log(`[3d-drones] (${i + 1}/${listingProducts.length}) ${name}`);
       const product = await fetchProductPrice(puppeteerPage, name, url);
       if (product) results.push(product);
       await new Promise((r) => setTimeout(r, 300));
@@ -160,6 +154,6 @@ export async function scrape3DPlanetHeadphones() {
     await browser.close();
   }
 
-  console.log(`[3d-headphones] Total: ${results.length}`);
+  console.log(`[3d-drones] Total: ${results.length}`);
   return results;
 }

@@ -68,6 +68,120 @@ import { scrapeZigzagPhones } from "../scrapers/zigzag/phones.js";
 import { scrapeZigzagHeadphones } from "../scrapers/zigzag/headphones.js";
 import { scrapeZigzagSpeakers } from "../scrapers/zigzag/speakers.js";
 import { scrapeVlvPhones } from "../scrapers/vlv/phones.js";
+import { scrapeAllsellCleaners } from "../scrapers/allsell/cleaners.js";
+import { scrapeRedstoreCleaners } from "../scrapers/redstore/cleaners.js";
+import { scrapeVlvCleaners } from "../scrapers/vlv/cleaners.js";
+import { scrapeYerevanMobileCleaners } from "../scrapers/yerevanmobile/cleaners.js";
+import { scrapeZigzagCleaners } from "../scrapers/zigzag/cleaners.js";
+import { scrape3DPlanetCleaners } from "../scrapers/d3planet/cleaners.js";
+import { scrapeEldoradoCameras } from "../scrapers/eldorado/camera.js";
+import { scrapeRedstoreCameras } from "../scrapers/redstore/camera.js";
+import { scrapeZigzagCameras } from "../scrapers/zigzag/camera.js";
+import { scrapeVlvCameras } from "../scrapers/vlv/camera.js";
+import { scrape3DPlanetCameras } from "../scrapers/d3planet/camera.js";
+import { scrapeZigzagPrinters } from "../scrapers/zigzag/printers.js";
+import { scrapeRedstorePrinters } from "../scrapers/redstore/printers.js";
+import { scrapeAllsellPrinters } from "../scrapers/allsell/printers.js";
+import { scrapeNotebookcentrePrinters } from "../scrapers/notebookcentre/printers.js";
+import { scrapeDgcompPrinters } from "../scrapers/dgcomp/printers.js";
+import { scrapeNotebookmallPrinters } from "../scrapers/notebookmall/printers.js";
+import { scrapeRedstoreMonitors } from "../scrapers/redstore/monitors.js";
+import { scrapeNotebookcentreMonitors } from "../scrapers/notebookcentre/monitors.js";
+import { scrapeDgcompMonitors } from "../scrapers/dgcomp/monitors.js";
+import { scrapeNotebookmallMonitors } from "../scrapers/notebookmall/monitors.js";
+import { scrapeMiarmeniaMonitors } from "../scrapers/miarmenia/monitors.js";
+import { scrapeSmartboxMonitors } from "../scrapers/smartbox/monitors.js";
+import { scrapeZigzagMonitors } from "../scrapers/zigzag/monitors.js";
+import { scrapeRedstoreProjectors } from "../scrapers/redstore/projectors.js";
+import { scrapeNotebookcentreProjectors } from "../scrapers/notebookcentre/projectors.js";
+import { scrapeDgcompProjectors } from "../scrapers/dgcomp/projectors.js";
+import { scrapeNotebookmallProjectors } from "../scrapers/notebookmall/projectors.js";
+import { scrapeRedstoreDrones } from "../scrapers/redstore/drones.js";
+import { scrapeYerevanMobileDrones } from "../scrapers/yerevanmobile/drones.js";
+import { scrapeAllsellDrones } from "../scrapers/allsell/drones.js";
+import { scrape3DPlanetDrones } from "../scrapers/d3planet/drones.js";
+
+export async function runDronesScraping() {
+  console.log("[scrape] 🔄 Starting drone-only scrape...");
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "drones", scrapeRedstoreDrones),
+    // scrapeCategoryIntoSource("yerevanmobile", "drones", scrapeYerevanMobileDrones),
+    // scrapeCategoryIntoSource("allsell", "drones", scrapeAllsellDrones),
+    // scrapeCategoryIntoSource("3dplanet", "drones", scrape3DPlanetDrones),
+  ]);
+  console.log("[scrape] ✅ Drone-only scrape complete");
+}
+
+export async function runProjectorsScraping() {
+  console.log("[scrape] 🔄 Starting projector-only scrape...");
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "projectors", scrapeRedstoreProjectors),
+    scrapeCategoryIntoSource("notebookcentre", "projectors", scrapeNotebookcentreProjectors),
+    scrapeCategoryIntoSource("dgcomp", "projectors", scrapeDgcompProjectors),
+    scrapeCategoryIntoSource("notebookmall", "projectors", scrapeNotebookmallProjectors),
+  ]);
+  console.log("[scrape] ✅ Projector-only scrape complete");
+}
+
+export async function runMonitorsScraping() {
+  console.log("[scrape] 🔄 Starting monitor-only scrape...");
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "monitors", scrapeRedstoreMonitors),
+    scrapeCategoryIntoSource("notebookcentre", "monitors", scrapeNotebookcentreMonitors),
+    scrapeCategoryIntoSource("dgcomp", "monitors", scrapeDgcompMonitors),
+    scrapeCategoryIntoSource("notebookmall", "monitors", scrapeNotebookmallMonitors),
+    scrapeCategoryIntoSource("miarmenia", "monitors", scrapeMiarmeniaMonitors),
+    scrapeCategoryIntoSource("smartbox", "monitors", scrapeSmartboxMonitors),
+    scrapeCategoryIntoSource("zigzag", "monitors", scrapeZigzagMonitors),
+  ]);
+  console.log("[scrape] ✅ Monitor-only scrape complete");
+}
+
+export async function runCameraScraping() {
+  console.log("[scrape] 🔄 Starting camera-only scrape...");
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "cameras", scrapeRedstoreCameras),
+    scrapeCategoryIntoSource("3dplanet", "cameras", scrape3DPlanetCameras),
+    scrapeCategoryIntoSource("zigzag", "cameras", scrapeZigzagCameras),
+    scrapeCategoryIntoSource("vlv", "cameras", scrapeVlvCameras),
+    scrapeCategoryIntoSource("eldorado", "cameras", scrapeEldoradoCameras),
+  ]);
+  console.log("[scrape] ✅ Camera-only scrape complete");
+}
+
+export async function runPrintersScraping() {
+  console.log("[scrape] 🔄 Starting printer-only scrape...");
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "printers", scrapeRedstorePrinters),
+    scrapeCategoryIntoSource("allsell", "printers", scrapeAllsellPrinters),
+    scrapeCategoryIntoSource("zigzag", "printers", scrapeZigzagPrinters),
+    scrapeCategoryIntoSource(
+      "notebookcentre",
+      "printers",
+      scrapeNotebookcentrePrinters,
+    ),
+    scrapeCategoryIntoSource("dgcomp", "printers", scrapeDgcompPrinters),
+    scrapeCategoryIntoSource("notebookmall", "printers", scrapeNotebookmallPrinters),
+  ]);
+  console.log("[scrape] ✅ Printer-only scrape complete");
+}
+
+export async function runCleanersScraping() {
+  console.log("[scrape] 🔄 Starting cleaner-only scrape...");
+  await Promise.allSettled([
+    scrapeCategoryIntoSource("redstore", "cleaners", scrapeRedstoreCleaners),
+    scrapeCategoryIntoSource(
+      "yerevanmobile",
+      "cleaners",
+      scrapeYerevanMobileCleaners,
+    ),
+    scrapeCategoryIntoSource("allsell", "cleaners", scrapeAllsellCleaners),
+    scrapeCategoryIntoSource("3dplanet", "cleaners", scrape3DPlanetCleaners),
+    scrapeCategoryIntoSource("zigzag", "cleaners", scrapeZigzagCleaners),
+    scrapeCategoryIntoSource("vlv", "cleaners", scrapeVlvCleaners),
+  ]);
+  console.log("[scrape] ✅ Cleaner-only scrape complete");
+}
 
 export async function runAirConditionersScraping() {
   console.log("[scrape] 🔄 Starting AC-only scrape...");
@@ -312,11 +426,7 @@ export async function runHeadphonesScraping() {
       "headphones",
       scrape3DPlanetHeadphones,
     ),
-    scrapeCategoryIntoSource(
-      "zigzag",
-      "headphones",
-      scrapeZigzagHeadphones,
-    ),
+    scrapeCategoryIntoSource("zigzag", "headphones", scrapeZigzagHeadphones),
   ]);
 
   console.log("[scrape] ✅ Headphones-only scrape complete");
@@ -487,7 +597,9 @@ function runScript(scriptRelativePath, scriptArgs = []) {
   return new Promise((resolve, reject) => {
     const scriptPath = path.resolve(__dirname, scriptRelativePath);
     console.log(`\n${"=".repeat(60)}`);
-    console.log(`[pipeline] 🚀 Running ${path.basename(scriptPath)} ${scriptArgs.join(" ")}`);
+    console.log(
+      `[pipeline] 🚀 Running ${path.basename(scriptPath)} ${scriptArgs.join(" ")}`,
+    );
     console.log("=".repeat(60));
 
     const child = spawn(process.execPath, [scriptPath, ...scriptArgs], {
@@ -496,10 +608,14 @@ function runScript(scriptRelativePath, scriptArgs = []) {
 
     child.on("exit", (code) => {
       if (code === 0) {
-        console.log(`[pipeline] ✅ ${path.basename(scriptPath)} completed successfully.`);
+        console.log(
+          `[pipeline] ✅ ${path.basename(scriptPath)} completed successfully.`,
+        );
         resolve();
       } else {
-        reject(new Error(`${path.basename(scriptPath)} exited with code ${code}`));
+        reject(
+          new Error(`${path.basename(scriptPath)} exited with code ${code}`),
+        );
       }
     });
 
@@ -511,7 +627,9 @@ function runScript(scriptRelativePath, scriptArgs = []) {
 
 export async function runPostScrapePipeline() {
   const cachePath = path.resolve(__dirname, "../cache");
-  console.log("[pipeline] 🔄 Executing post-scrape ingestion & fuzzy matching...");
+  console.log(
+    "[pipeline] 🔄 Executing post-scrape ingestion & fuzzy matching...",
+  );
   await runScript("../migration/process-scrape.js", [cachePath]);
   await runScript("../migration/fuzzy-match.js", []);
   console.log("[pipeline] ✅ Post-scrape pipeline completed successfully.");
@@ -528,8 +646,15 @@ export async function runFullScraping() {
   await runDysonScraping();
   await runGamingScraping();
   await runAirConditionersScraping();
-  console.log("[scrape] ✅ All category scrapers finished. Running post-scrape DB pipeline...");
+  await runCameraScraping();
+  await runPrintersScraping();
+  await runCleanersScraping();
+  await runMonitorsScraping();
+  await runProjectorsScraping();
+  await runDronesScraping();
+  console.log(
+    "[scrape] ✅ All category scrapers finished. Running post-scrape DB pipeline...",
+  );
   await runPostScrapePipeline();
   console.log("[scrape] ✅ Full scraping and post-scrape pipeline complete.");
 }
-

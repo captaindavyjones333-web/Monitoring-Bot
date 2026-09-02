@@ -13,6 +13,18 @@ export const DYSON_REGEX = /\bdyson\b/i;
 export const GAMING_REGEX =
   /\bps5\b|\bplaystation\s*5\b|\bswitch\b|\bxbox\s*series\b|\bmeta\s*quest\b|\bsteam\s*deck\b|\brog\s*ally\b|\blegion\s*go\b|\b(ps5?|playstation5?)\s*vr\s*2\b|\blogitech\s*(g\d*\s*)?(pro\s*racing|racing\s*wheel|trueforce|g29|g920|g923|g27)|\bpxn\s*(v\d+|l\d+|\w*\s*racing)|\bthrustmaster\s*(t\d+|tx\s*racing|tmx|ts-?xw|t-?gt|t300|tca|t150|t80)|\bhori\s*(rwa?|racing\s*wheel)/i;
 export const AC_REGEX = /\bair\s*condition|odorak|օդորակ/i;
+export const CAMERA_REGEX =
+  /\b(canon|nikon|fujifilm|instax|gopro|insta360|osmo)\b|\bcamera\b|տեսախցիկ/i;
+export const CLEANER_REGEX =
+  /\b(dreame|karcher|k\xc3\xa4rcher|roborock|miele|vacuum|cleaner)\b|փոշեկուլ/i;
+export const PRINTER_REGEX =
+  /\b(printer|laserjet|deskjet|ecotank|pixma)\b|տպիչ/i;
+export const PROJECTOR_REGEX =
+  /\b(projector|projectors|wanbo|xgimi)\b|պրոյեկտոր|պրոեկտոր|проектор/i;
+export const DRONE_REGEX =
+  /\b(drone|drones|mavic|avata|phantom|matrice|autel|betafpv|hubsan)\b|\bdji\s*(mini|air|fpv|neo|inspire|mavic|avata)\b|դրոն|դրոններ|թռչող\s*սարք|дрон|квадрокоптер/i;
+export const MONITOR_REGEX =
+  /\b(monitor|monitors)\b|մոնիտոր|մոնիտորներ|монитор/i;
 
 export function detectCategory(name) {
   if (WATCH_REGEX.test(name)) return "watches";
@@ -24,5 +36,11 @@ export function detectCategory(name) {
   if (DYSON_REGEX.test(name)) return "dyson";
   if (GAMING_REGEX.test(name)) return "gaming";
   if (AC_REGEX.test(name)) return "airconditioners";
+  if (CAMERA_REGEX.test(name)) return "camera";
+  if (CLEANER_REGEX.test(name)) return "cleaners";
+  if (PRINTER_REGEX.test(name)) return "printers";
+  if (PROJECTOR_REGEX.test(name)) return "projectors";
+  if (DRONE_REGEX.test(name)) return "drones";
+  if (MONITOR_REGEX.test(name)) return "monitors";
   return "phones";
 }

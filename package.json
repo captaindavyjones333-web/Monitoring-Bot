@@ -21,16 +21,19 @@
   "dependencies": {
     "@sparticuz/chromium": "^149.0.0",
     "axios": "^1.18.1",
+    "axios-cookiejar-support": "^7.0.0",
     "cheerio": "^1.2.0",
     "dotenv": "^17.4.2",
     "fs-extra": "^11.3.5",
     "node-cron": "^4.5.0",
     "node-telegram-bot-api": "^1.1.2",
+    "pg": "^8.13.1",
     "puppeteer": "^25.2.1",
     "puppeteer-core": "^25.2.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "rebrowser-puppeteer": "^24.8.1",
     "telegraf": "^4.16.3",
-    "pg": "^8.13.1"
+    "tough-cookie": "^6.0.2"
   }
 }

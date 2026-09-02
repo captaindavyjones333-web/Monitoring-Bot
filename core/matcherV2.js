@@ -150,6 +150,8 @@ const COMPETITOR_FILES = [
   'notebookcentre.json',
   'allsell.json',
   '3dplanet.json',
+  'notebookmall.json',
+  'complife.json',
 ];
 
 export function runMatcherV2() {

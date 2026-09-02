@@ -22,7 +22,12 @@ const SOURCES = [
   "zigzag",
   "vesta",
   "vlv",
-  "vega"
+  "vega",
+  "notebookcentre",
+  "dgcomp",
+  "notebookmall",
+  "smartbox",
+  "miarmenia"
 ];
 
 // ─── Write ────────────────────────────────────────────────────────────────────

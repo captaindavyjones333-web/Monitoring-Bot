@@ -2,7 +2,7 @@ import puppeteer from "puppeteer";
 import * as cheerio from "cheerio";
 
 const LIST_URL =
-  "https://mobilecentre.am/category/headphone/146/156/?search=filters&searchData_brand=%5B%2256057%22%2C%2255413%22%2C%2255414%22%5D&searchData_cats=%5B%22156%22%5D";
+  "https://mobilecentre.am/category/headphone/146/156/?search=filters&searchData_brand=[%2256078%22,%2256057%22,%2255842%22,%2255839%22,%2255413%22,%2255414%22]&searchData_cats=[%22156%22]";
 
 function parsePrice(text) {
   const match = text.replace(/\s/g, "").match(/([\d,]+)դր/);

@@ -12,52 +12,31 @@ import pg from "pg";
 import {
   buildComparisons,
   buildMacbookComparisons,
-  buildTvComparisons,
-  buildDysonComparisons,
-  buildGamingComparisons,
-  buildACComparisons,
-  splitAlertsByCategory,
+  buildSingleProductComparison,
+  groupPhoneAlerts,
+  groupCategoryAlertsByBrand,
+  getSortKey,
 } from "../core/comparator.js";
 import { extractModelCode } from "../core/modelCode.js";
 import { normalizeName } from "../core/normalizer.js";
-
-const NORMALIZED_KEY_CATEGORIES = new Set([
-  "phones",
-  "tablets",
-  "watches",
-  "headphones",
-  "speakers",
-]);
-
-// DB category slug -> which build*Comparisons() function handles it.
-// build*() returns [{ key, hasAlert, message }] — same objects comparator.js always returns.
-// splitAlertsByCategory() then filters hasAlert===true, sorts, groups by brand, and numbers them.
-const CATEGORY_HANDLERS = {
-  macbooks: { build: (groups) => buildMacbookComparisons(groups) },
-  tvs: { build: (groups) => buildTvComparisons(groups) },
-  dyson: { build: (groups) => buildDysonComparisons(groups) },
-  gaming: { build: (groups) => buildGamingComparisons(groups) },
-  "air-conditioners": { build: (groups) => buildACComparisons(groups) },
-  phones: { build: (groups) => buildComparisons(groups, "phones") },
-  tablets: { build: (groups) => buildComparisons(groups, "tablets") },
-  watches: { build: (groups) => buildComparisons(groups, "watches") },
-  headphones: { build: (groups) => buildComparisons(groups, "headphones") },
-  speakers: { build: (groups) => buildComparisons(groups, "speakers") },
-};
 
 const DB_SLUG_BY_CATEGORY_KEY = {
   airconditioners: "air-conditioners",
 };
 
 /**
- * Query the DB, run comparisons via the real comparator.js functions,
- * filter to hasAlert===true, and return grouped alerts matching splitAlertsByCategory() shape:
- * { phones: [], tablets: [], watches: [], headphones: [], macbooks: [], speakers: [], tvs: [], dyson: [], gaming: [], airconditioners: [] }
+ * Query the DB, run comparisons per category (restoring phone & macbook multi-tier/code formats,
+ * while preserving 1-to-1 product comparisons for all other categories),
+ * filter to hasAlert===true, and return grouped alerts:
+ * { phones: [], tablets: [], watches: [], headphones: [], macbooks: [], speakers: [], tvs: [], dyson: [], gaming: [], airconditioners: [], camera: [], cleaners: [], printers: [] }
  *
  * @param {string | null} categoryFilter - e.g. 'phones', 'tvs', 'airconditioners'. null = all categories.
  */
 export async function getDbComparisonGrouped(categoryFilter = null) {
-  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  const pool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+  });
   const client = await pool.connect();
   try {
     const targetDbSlug = categoryFilter
@@ -87,36 +66,24 @@ export async function getDbComparisonGrouped(categoryFilter = null) {
       listingsByProduct.get(l.product_id).push(l);
     }
 
-    // Build the exact groups Map shape that build*Comparisons() expects:
-    //   Map<key, { normalized: key, sources: { [storeName]: { name, cash_price, ... } } }>
-    // store_name from the DB must exactly match the keys in SOURCE_LABELS (e.g. 'redstore', 'yerevanmobile').
     const groupsByCategory = new Map();
 
     let skippedNoListings = 0;
     for (const p of productsRes.rows) {
-      if (!p.category_slug || !CATEGORY_HANDLERS[p.category_slug]) continue;
+      if (!p.category_slug) continue;
 
       const listings = listingsByProduct.get(p.id) ?? [];
       if (listings.length === 0) {
         skippedNoListings += 1;
         continue;
       }
-      
-      let key;
-      if (NORMALIZED_KEY_CATEGORIES.has(p.category_slug)) {
-        const rsListing = listings.find((l) => l.store_name === "redstore");
-        const nameForKey =
-          (rsListing || listings[0]).raw_title || p.canonical_title;
-        key = normalizeName(nameForKey);
-      } else {
-        key = String(p.id);
-      }
 
       if (!groupsByCategory.has(p.category_slug))
         groupsByCategory.set(p.category_slug, new Map());
       const categoryGroups = groupsByCategory.get(p.category_slug);
 
-      // For macbooks, resolve model code from listings or product title
+      const key = String(p.id);
+
       let modelCode = null;
       if (p.category_slug === "macbooks") {
         modelCode = extractModelCode(p.canonical_title);
@@ -132,14 +99,21 @@ export async function getDbComparisonGrouped(categoryFilter = null) {
         }
       }
 
-      if (!categoryGroups.has(key)) {
-        categoryGroups.set(key, {
-          normalized: modelCode || key,
-          code: modelCode || key,
-          canonicalTitle: p.canonical_title,
-          sources: {},
-        });
+      let normalizedKey = String(p.id);
+      if (p.category_slug === "phones") {
+        const rsListing = listings.find((l) => l.store_name === "redstore");
+        const nameForKey =
+          (rsListing || listings[0]).raw_title || p.canonical_title;
+        normalizedKey = normalizeName(nameForKey);
       }
+
+      categoryGroups.set(key, {
+        productId: p.id,
+        normalized: normalizedKey,
+        code: modelCode || normalizedKey,
+        canonicalTitle: p.canonical_title,
+        sources: {},
+      });
       const targetGroup = categoryGroups.get(key);
 
       for (const l of listings) {
@@ -170,33 +144,71 @@ export async function getDbComparisonGrouped(categoryFilter = null) {
       );
     }
 
-    // ── Run build*Comparisons() for each category slug ───────────────────
-    // Each returns [{ key, hasAlert, message }] — collect them all into one flat array.
-    const allComparisons = [];
+    const grouped = {
+      phones: [],
+      tablets: [],
+      watches: [],
+      headphones: [],
+      macbooks: [],
+      speakers: [],
+      tvs: [],
+      dyson: [],
+      gaming: [],
+      airconditioners: [],
+      camera: [],
+      cleaners: [],
+      printers: [],
+      projectors: [],
+      drones: [],
+      monitors: [],
+    };
+
     for (const [categorySlug, groups] of groupsByCategory) {
       if (
         targetDbSlug &&
         categorySlug !== targetDbSlug &&
         categorySlug !== categoryFilter
-      )
+      ) {
         continue;
-      const handler = CATEGORY_HANDLERS[categorySlug];
-      if (!handler) continue;
-      try {
-        const results = handler.build(groups);
-        allComparisons.push(...results);
-        console.log(
-          `[db-report] ${categorySlug}: ${results.length} group(s) built, ${results.filter((r) => r.hasAlert).length} with alerts`,
-        );
-      } catch (err) {
-        console.error(
-          `[db-report] Failed for '${categorySlug}': ${err.message}`,
-        );
       }
+
+      let comparisons = [];
+      if (categorySlug === "phones") {
+        comparisons = buildComparisons(groups, "phones");
+      } else if (categorySlug === "macbooks") {
+        comparisons = buildMacbookComparisons(groups);
+      } else {
+        for (const [, group] of groups) {
+          const comp = buildSingleProductComparison(group, categorySlug);
+          if (comp && comp.hasAlert) {
+            comparisons.push(comp);
+          }
+        }
+      }
+
+      comparisons.sort((a, b) =>
+        getSortKey(a.message).localeCompare(getSortKey(b.message)),
+      );
+      const messages = comparisons.filter((c) => c.hasAlert).map((c) => c.message);
+
+      const outKey =
+        categorySlug === "air-conditioners" ? "airconditioners" : categorySlug;
+
+      if (categorySlug === "phones") {
+        grouped.phones = groupPhoneAlerts(messages);
+      } else if (categorySlug === "macbooks") {
+        grouped.macbooks = messages.map((msg, i) => `${i + 1}. ${msg}`);
+      } else if (categorySlug === "dyson") {
+        grouped.dyson = messages.map((msg, i) => `${i + 1}. ${msg}`);
+      } else {
+        grouped[outKey] = groupCategoryAlertsByBrand(categorySlug, messages);
+      }
+
+      console.log(
+        `[db-report] ${categorySlug}: ${groups.size} group(s) built, ${messages.length} with alerts`,
+      );
     }
 
-    // ── Apply the EXACT same hasAlert filter + brand-grouping + numbering ──
-    const grouped = splitAlertsByCategory(allComparisons);
     return grouped;
   } finally {
     client.release();
@@ -229,6 +241,12 @@ export async function runDbComparison(sendFn = null, categoryFilter = null) {
     "dyson",
     "gaming",
     "airconditioners",
+    "camera",
+    "cleaners",
+    "printers",
+    "projectors",
+    "drones",
+    "monitors",
   ];
   const allMessages = [];
   for (const cat of CATEGORY_ORDER) {

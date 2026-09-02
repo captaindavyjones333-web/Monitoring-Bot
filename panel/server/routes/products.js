@@ -417,7 +417,7 @@ productsRouter.delete("/:id", async (req, res, next) => {
 
     // 2. Fetch all linked store listings before separating them
     const listingsRes = await client.query(
-      `SELECT id, raw_title, normalized_title FROM store_listings WHERE product_id = $1`,
+      `SELECT id, store_id, raw_title, normalized_title, url, external_id FROM store_listings WHERE product_id = $1`,
       [id],
     );
 
@@ -433,6 +433,21 @@ productsRouter.delete("/:id", async (req, res, next) => {
       await client.query(
         `UPDATE store_listings SET product_id = $1 WHERE id = $2`,
         [newProductRes.rows[0].id, listing.id],
+      );
+
+      // Record rejection against the separated product
+      await client.query(
+        `INSERT INTO rejected_matches (store_id, product_id, raw_title, url, external_id)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT DO NOTHING`,
+        [listing.store_id, id, listing.raw_title, listing.url || null, listing.external_id || null],
+      );
+
+      await client.query(
+        `UPDATE product_matches 
+         SET status = 'rejected', reviewed_at = now()
+         WHERE store_listing_id = $1 AND product_id = $2`,
+        [listing.id, id],
       );
     }
 
@@ -458,4 +473,4 @@ productsRouter.delete("/:id", async (req, res, next) => {
     client.release();
   }
 });
-
+

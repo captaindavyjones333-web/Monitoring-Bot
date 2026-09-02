@@ -73,7 +73,7 @@ listingsRouter.post("/:id/unlink", async (req, res, next) => {
     await client.query("BEGIN");
 
     const listingResult = await client.query(
-      `SELECT sl.id, sl.product_id, sl.raw_title, sl.normalized_title,
+      `SELECT sl.id, sl.store_id, sl.product_id, sl.raw_title, sl.normalized_title, sl.url, sl.external_id,
               p.category_id, p.brand, p.canonical_title AS parent_title
        FROM store_listings sl
        LEFT JOIN products p ON p.id = sl.product_id
@@ -104,6 +104,23 @@ listingsRouter.post("/:id/unlink", async (req, res, next) => {
       `UPDATE store_listings SET product_id = $1 WHERE id = $2`,
       [newProductId, id],
     );
+
+    // 2b. Record explicit rejection in rejected_matches and product_matches
+    if (previousProductId) {
+      await client.query(
+        `INSERT INTO rejected_matches (store_id, product_id, raw_title, url, external_id)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT DO NOTHING`,
+        [listing.store_id, previousProductId, listing.raw_title, listing.url || null, listing.external_id || null],
+      );
+
+      await client.query(
+        `UPDATE product_matches 
+         SET status = 'rejected', reviewed_at = now()
+         WHERE store_listing_id = $1 AND product_id = $2`,
+        [id, previousProductId],
+      );
+    }
 
     // 3. Log to audit_log
     await client.query(
