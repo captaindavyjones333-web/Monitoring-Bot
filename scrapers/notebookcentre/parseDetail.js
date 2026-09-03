@@ -58,11 +58,8 @@ export function parseDetailHtml(html) {
 
   const specs = normalizeSpecs(specsRaw);
 
-  // "Credit Price: <span class="loan-total">395 000 ֏</span>"
-  const installmentText = $('.loan-total').first().text();
-  const installment_price = parsePriceAmd(installmentText);
-
-  return { specsRaw, specs, installment_price };
+  // Credit price is not tracked for Notebookcentre — set to null.
+  return { specsRaw, specs, installment_price: null };
 }
 
 function normalizeSpecs(raw) {

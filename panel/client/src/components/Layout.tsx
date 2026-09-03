@@ -11,8 +11,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: "/", label: "Search", end: true },
-  { to: "/review-queue", label: "Review queue" },
-  { to: "/category-mapping", label: "Category mapping", disabled: true },
+  // { to: "/review-queue", label: "Review queue" },
+  // { to: "/category-mapping", label: "Category mapping", disabled: true },
 ];
 
 export default function Layout() {

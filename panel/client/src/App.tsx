@@ -4,7 +4,7 @@ import LoginPage from "./pages/LoginPage.tsx";
 import SignupPage from "./pages/SignupPage.tsx";
 import ProductSearchPage from "./pages/ProductSearchPage.tsx";
 import ProductDetailPage from "./pages/ProductDetailPage.tsx";
-import ReviewQueuePage from "./pages/ReviewQueuePage.tsx";
+// import ReviewQueuePage from "./pages/ReviewQueuePage.tsx";
 
 export default function App() {
   return (
@@ -15,7 +15,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<ProductSearchPage />} />
           <Route path="/products/:id" element={<ProductDetailPage />} />
-          <Route path="/review-queue" element={<ReviewQueuePage />} />
+          {/* <Route path="/review-queue" element={<ReviewQueuePage />} /> */}
         </Route>
       </Routes>
     </BrowserRouter>

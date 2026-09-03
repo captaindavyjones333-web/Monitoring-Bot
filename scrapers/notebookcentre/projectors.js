@@ -57,7 +57,7 @@ export async function scrapeNotebookcentreProjectors() {
     .map((stub) => ({
       name: stub.name,
       cash_price: stub.price,
-      installment_price: stub.monthly_price || null,
+      installment_price: null,
       source: STORE,
       category: "projectors",
       url: stub.url,

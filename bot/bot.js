@@ -5,6 +5,10 @@ import { fileURLToPath } from "url";
 import { runFullScraping } from "../jobs/scrapeJob.js";
 import { runSendJob } from "../jobs/sendJob.js";
 import {
+  runPriceWatchJob,
+  sendCategoryNotificationsWithDelay,
+} from "../jobs/priceWatchJob.js";
+import {
   runDbComparison,
   getDbComparisonGrouped,
 } from "../migration/generate-comparison-report.js";
@@ -1024,25 +1028,20 @@ bot.on("message", async (msg) => {
     return;
   }
 
-  // ─── Full scan: re-scrapes every category, runs post-scrape pipeline, then reports a summary ───────
+  // ─── Full scan: re-scrapes every category, runs post-scrape pipeline, then reports category-by-category with delay ───────
   if (text === "🔄 Լրիվ սկանավորում") {
     await bot.sendMessage(
       userId,
       "🔄 Սկանավորում եմ բոլոր կայքերը, խնդրում եմ սպասել...",
     );
     try {
-      await runFullScraping();
+      const result = await runPriceWatchJob();
+      const { categoriesWithChanges, totalChanges } = result || {};
 
-      const result = await runSendJob(false, false);
-      const total = Object.values(result).reduce(
-        (sum, arr) => sum + arr.length,
-        0,
-      );
-
-      if (total === 0) {
+      if (!categoriesWithChanges || categoriesWithChanges.length === 0) {
         await bot.sendMessage(
           userId,
-          "✅ Գնային անհամապատասխանություններ չկան",
+          "✅ Գնային փոփոխություններ չկան",
           USER_KEYBOARD,
         );
         return;
@@ -1050,18 +1049,16 @@ bot.on("message", async (msg) => {
 
       await bot.sendMessage(
         userId,
-        `🚨 ${total} անհամապատասխանություն հայտնաբերվել է`,
+        `🚨 ${totalChanges} փոփոխություն հայտնաբերվել է (${categoriesWithChanges.length} կատեգորիա): Ծանուցումները կուղարկվեն կատեգորիա առ կատեգորիա (5 րոպե ընդմիջումով):`,
         USER_KEYBOARD,
       );
 
-      for (const [categoryKey, cfg] of Object.entries(CATEGORY_CONFIG)) {
-        const messages = result[categoryKey] || [];
-        if (messages.length === 0) continue;
-        await bot.sendMessage(userId, `${cfg.label}`, {
-          parse_mode: "Markdown",
-        });
-        await sendAlerts(messages);
-      }
+      await sendCategoryNotificationsWithDelay(
+        bot,
+        [userId],
+        categoriesWithChanges,
+        5 * 60 * 1000,
+      );
     } catch (err) {
       console.error("[bot] ❌ Full scan failed:", err.message);
       await bot.sendMessage(userId, "❌ Սխալ: " + err.message, USER_KEYBOARD);

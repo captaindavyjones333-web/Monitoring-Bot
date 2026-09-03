@@ -88,7 +88,7 @@ async function fetchAllListingStubs() {
 async function enrichStub(stub) {
   try {
     const { data: html } = await client.get(stub.url);
-    const { specs, installment_price } = parseDetailHtml(html);
+    const { specs } = parseDetailHtml(html);
 
     return {
       id: stub.id,
@@ -96,7 +96,7 @@ async function enrichStub(stub) {
       name: stub.name,
       brand: detectBrand(stub.name, []),
       price: stub.price,
-      installment_price: installment_price ?? stub.monthly_price,
+      installment_price: null,
       url: stub.url,
       thumbnail: stub.thumbnail,
       specs,

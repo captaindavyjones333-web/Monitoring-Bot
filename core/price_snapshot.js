@@ -27,6 +27,7 @@ export function saveSnapshot(products) {
     snapshot[key] = {
       source: p.source,
       name: p.name,
+      category: p.category || null,
       cash_price: p.cash_price ?? null,
       installment_price: p.installment_price ?? null,
     };
@@ -84,6 +85,7 @@ export function diffProducts(currentProducts, prevSnapshot) {
           type: "appeared",
           source: curr.source,
           name: curr.name,
+          category: curr.category || null,
           prevCash: null,
           prevInstallment: null,
           currCash,
@@ -116,6 +118,7 @@ export function diffProducts(currentProducts, prevSnapshot) {
       type,
       source: curr.source,
       name: curr.name,
+      category: curr.category || prev.category || null,
       prevCash,
       prevInstallment: prev.installment_price,
       currCash,
@@ -132,6 +135,7 @@ export function diffProducts(currentProducts, prevSnapshot) {
           type: "disappeared",
           source: prev.source,
           name: prev.name,
+          category: prev.category || null,
           prevCash: prev.cash_price,
           prevInstallment: prev.installment_price,
           currCash: null,

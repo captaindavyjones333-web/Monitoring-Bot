@@ -254,7 +254,11 @@ if (missingSource.length > 0) {
 }
 
 for (const p of raw) {
-  if (!p.installment_price) p.installment_price = p.cash_price ?? null;
+  if (p.source === "notebookcentre" || p.source === "notebookcentre.am") {
+    p.installment_price = null;
+  } else if (!p.installment_price) {
+    p.installment_price = p.cash_price ?? null;
+  }
   if (p.price == null) p.price = p.cash_price ?? null;
 }
 

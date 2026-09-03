@@ -1,6 +1,9 @@
 import cron from "node-cron";
 import { runFullScraping } from "./scrapeJob.js";
-import { runPriceWatchJob } from "./priceWatchJob.js";
+import {
+  runPriceWatchJob,
+  sendCategoryNotificationsWithDelay,
+} from "./priceWatchJob.js";
 
 export function startScheduler(bot, getApprovedUserIds) {
   // 6:00 AM Yerevan time — scrape every category and run post-scrape pipeline.
@@ -25,9 +28,9 @@ export function startScheduler(bot, getApprovedUserIds) {
     console.log(`[scheduler] 👁️  ${label} price watch starting...`);
     const userIds = getApprovedUserIds();
 
-    let messages;
+    let result;
     try {
-      messages = await runPriceWatchJob();
+      result = await runPriceWatchJob();
     } catch (err) {
       console.error(`[scheduler] ❌ ${label} price watch failed:`, err.message);
       for (const userId of userIds) {
@@ -38,7 +41,9 @@ export function startScheduler(bot, getApprovedUserIds) {
       return;
     }
 
-    if (messages.length === 0) {
+    const { categoriesWithChanges, totalChanges } = result || {};
+
+    if (!categoriesWithChanges || categoriesWithChanges.length === 0) {
       console.log(`[scheduler] ✅ ${label} — no price changes detected`);
       for (const userId of userIds) {
         await bot
@@ -48,33 +53,40 @@ export function startScheduler(bot, getApprovedUserIds) {
       return;
     }
 
-    console.log(`[scheduler] 📊 ${label} — ${messages.length} changes, sending...`);
+    console.log(
+      `[scheduler] 📊 ${label} — ${totalChanges} changes across ${categoriesWithChanges.length} categories with changes`,
+    );
+
     for (const userId of userIds) {
       await bot
-        .sendMessage(userId, `📊 ${label} — ${messages.length} փոփոխություն հայտնաբերվել է`)
+        .sendMessage(
+          userId,
+          `📊 ${label} — ${totalChanges} փոփոխություն (${categoriesWithChanges.length} կատեգորիա)`,
+        )
         .catch(() => {});
-      for (const msg of messages) {
-        await bot
-          .sendMessage(userId, msg, { parse_mode: "Markdown" })
-          .catch((err) =>
-            console.error(`[scheduler] Failed to send to ${userId}: ${err.message}`)
-          );
-      }
     }
+
+    await sendCategoryNotificationsWithDelay(
+      bot,
+      userIds,
+      categoriesWithChanges,
+      5 * 60 * 1000,
+    );
+
     console.log(`[scheduler] ✅ ${label} price watch complete`);
   }
 
   // 09:10 AM Yerevan
   cron.schedule(
-    "10 9 * * *",
-    () => runPriceWatch("09:10"),
+    "20 6 * * *",
+    () => runPriceWatch("06:20"),
     { timezone: "Asia/Yerevan" },
   );
 
   // 13:30 PM Yerevan
   cron.schedule(
-    "30 13 * * *",
-    () => runPriceWatch("13:30"),
+    "20 10 * * *",
+    () => runPriceWatch("10:20"),
     { timezone: "Asia/Yerevan" },
   );
 

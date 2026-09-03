@@ -12,14 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const CATEGORY_ENDPOINT = "notebooks";
 const STORE = "redstore.am";
-const CACHE_DIR = path.join(
-  __dirname,
-  "..",
-  "..",
-  "data",
-  "cache",
-  "notebooks",
-);
+const CACHE_DIR = path.join(__dirname, "..", "..", "cache", "notebooks");
 
 /**
  * normalize() is called per raw product by fetchAllBrands(). It does NOT
@@ -38,7 +31,7 @@ function normalize(raw) {
 
   const specs = mapAttributes(raw.attributes);
   const brand = detectBrand(raw.name, raw.attributes);
-  console.log(raw)
+  console.log(raw);
   return {
     raw,
     normalized: {
@@ -88,7 +81,10 @@ export async function scrapeRedstoreNotebooks() {
   return normalizedOut;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
   scrapeRedstoreNotebooks().catch((err) => {
     console.error("[redstore/notebooks] fatal error:", err);
     process.exit(1);

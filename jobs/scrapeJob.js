@@ -100,16 +100,43 @@ import { scrapeRedstoreDrones } from "../scrapers/redstore/drones.js";
 import { scrapeYerevanMobileDrones } from "../scrapers/yerevanmobile/drones.js";
 import { scrapeAllsellDrones } from "../scrapers/allsell/drones.js";
 import { scrape3DPlanetDrones } from "../scrapers/d3planet/drones.js";
+import { scrapeRedstoreNotebooks } from "../scrapers/redstore/notebooks.js";
+import { scrapeNotebookcentreNotebooks } from "../scrapers/notebookcentre/notebooks.js";
+import { scrapeAllsellNotebooks } from "../scrapers/allsell/notebooks.js";
+import { scrape3DPlanetNotebooks } from "../scrapers/d3planet/notebooks.js";
+import { scrapeNotebookmallNotebooks } from "../scrapers/notebookmall/notebooks.js";
+import { scrapeComplifeNotebooks } from "../scrapers/complife/notebooks.js";
+import { runMatcherV2 } from "../core/matcherV2.js";
 
 export async function runDronesScraping() {
   console.log("[scrape] 🔄 Starting drone-only scrape...");
   await Promise.allSettled([
     scrapeCategoryIntoSource("redstore", "drones", scrapeRedstoreDrones),
-    // scrapeCategoryIntoSource("yerevanmobile", "drones", scrapeYerevanMobileDrones),
-    // scrapeCategoryIntoSource("allsell", "drones", scrapeAllsellDrones),
-    // scrapeCategoryIntoSource("3dplanet", "drones", scrape3DPlanetDrones),
+    scrapeCategoryIntoSource("yerevanmobile", "drones", scrapeYerevanMobileDrones),
+    scrapeCategoryIntoSource("allsell", "drones", scrapeAllsellDrones),
+    scrapeCategoryIntoSource("3dplanet", "drones", scrape3DPlanetDrones),
   ]);
   console.log("[scrape] ✅ Drone-only scrape complete");
+}
+
+export async function runNotebooksScraping() {
+  console.log("[scrape] 🔄 Starting notebooks scrape...");
+  await Promise.allSettled([
+    scrapeRedstoreNotebooks(),
+    scrapeNotebookcentreNotebooks(),
+    scrapeAllsellNotebooks(),
+    scrape3DPlanetNotebooks(),
+    scrapeNotebookmallNotebooks(),
+    scrapeComplifeNotebooks(),
+  ]);
+  console.log("[scrape] 🔄 Updating notebook matcher (matches-v2.json)...");
+  try {
+    runMatcherV2();
+    console.log("[scrape] ✅ Notebook matcher completed successfully.");
+  } catch (err) {
+    console.error("[scrape] ❌ Notebook matcher failed:", err.message);
+  }
+  console.log("[scrape] ✅ Notebooks scrape complete");
 }
 
 export async function runProjectorsScraping() {
@@ -261,10 +288,21 @@ async function scrapeCategoryIntoSource(source, category, fn) {
     // Keep everything from other categories, drop old entries of THIS
     // category (they're being replaced by the fresh scrape).
     const keptOtherCategories = existingProducts.filter(
-      (p) => detectCategory(p.name) !== category,
+      (p) => (p.category || detectCategory(p.name)) !== category,
     );
 
+    if (source === "notebookcentre" || source === "notebookcentre.am") {
+      freshProducts.forEach((p) => {
+        p.installment_price = null;
+      });
+    }
+
     const merged = [...keptOtherCategories, ...freshProducts];
+    if (source === "notebookcentre" || source === "notebookcentre.am") {
+      merged.forEach((p) => {
+        p.installment_price = null;
+      });
+    }
     saveCache(source, merged);
     markUpdated(source);
     console.log(
@@ -631,7 +669,7 @@ export async function runPostScrapePipeline() {
     "[pipeline] 🔄 Executing post-scrape ingestion & fuzzy matching...",
   );
   await runScript("../migration/process-scrape.js", [cachePath]);
-  await runScript("../migration/fuzzy-match.js", []);
+  // await runScript("../migration/fuzzy-match.js", []);
   console.log("[pipeline] ✅ Post-scrape pipeline completed successfully.");
 }
 
@@ -652,6 +690,7 @@ export async function runFullScraping() {
   await runMonitorsScraping();
   await runProjectorsScraping();
   await runDronesScraping();
+  await runNotebooksScraping();
   console.log(
     "[scrape] ✅ All category scrapers finished. Running post-scrape DB pipeline...",
   );

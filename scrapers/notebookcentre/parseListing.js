@@ -19,7 +19,8 @@ export function parseListingHtml(html) {
     const nameSpan = card.find('h3.product-title span.animate-target').first();
     const name = (nameSpan.attr('title') || nameSpan.text() || '').trim();
 
-    const priceText = card.find('.product-custom-price').first().text();
+    const priceElement = card.find('.product-custom-price').first();
+    const priceText = priceElement.find('span').first().text() || priceElement.text();
     const price = parsePriceAmd(priceText);
 
     const monthlyText = card
@@ -44,7 +45,8 @@ export function parseListingHtml(html) {
       name,
       url,
       price,
-      monthly_price: monthlyPrice,
+      monthly_price: null,
+      installment_price: null,
       thumbnail,
       spec_preview: specPreview,
       spec_preview_truncated: specPreviewTruncated,
