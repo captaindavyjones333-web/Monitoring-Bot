@@ -15,6 +15,8 @@ import {
   buildSingleProductComparison,
   groupPhoneAlerts,
   groupCategoryAlertsByBrand,
+  groupDysonAlerts,
+  extractRsOnlyFromGroups,
   getSortKey,
 } from "../core/comparator.js";
 import { extractModelCode } from "../core/modelCode.js";
@@ -172,6 +174,8 @@ export async function getDbComparisonGrouped(categoryFilter = null) {
         continue;
       }
 
+      const rsOnly = extractRsOnlyFromGroups(groups);
+
       let comparisons = [];
       if (categorySlug === "phones") {
         comparisons = buildComparisons(groups, "phones");
@@ -195,17 +199,17 @@ export async function getDbComparisonGrouped(categoryFilter = null) {
         categorySlug === "air-conditioners" ? "airconditioners" : categorySlug;
 
       if (categorySlug === "phones") {
-        grouped.phones = groupPhoneAlerts(messages);
+        grouped.phones = groupPhoneAlerts(messages, rsOnly);
       } else if (categorySlug === "macbooks") {
-        grouped.macbooks = messages.map((msg, i) => `${i + 1}. ${msg}`);
+        grouped.macbooks = groupCategoryAlertsByBrand("macbooks", messages, rsOnly);
       } else if (categorySlug === "dyson") {
-        grouped.dyson = messages.map((msg, i) => `${i + 1}. ${msg}`);
+        grouped.dyson = groupDysonAlerts(messages, rsOnly);
       } else {
-        grouped[outKey] = groupCategoryAlertsByBrand(categorySlug, messages);
+        grouped[outKey] = groupCategoryAlertsByBrand(outKey, messages, rsOnly);
       }
 
       console.log(
-        `[db-report] ${categorySlug}: ${groups.size} group(s) built, ${messages.length} with alerts`,
+        `[db-report] ${categorySlug}: ${groups.size} group(s) built, ${messages.length} with alerts, ${rsOnly.length} RS-only`,
       );
     }
 

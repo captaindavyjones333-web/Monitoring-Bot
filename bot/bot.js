@@ -517,9 +517,7 @@ bot.on("callback_query", async (query) => {
         categoryMessages,
         groupKey,
       );
-      const messages = filtered.length
-        ? renumberBlock(filtered.join("\n\n")).split("\n\n")
-        : [];
+      const messages = filtered.map((b) => renumberBlock(b));
 
       if (messages.length === 0) {
         await bot.sendMessage(
@@ -564,8 +562,8 @@ bot.on("callback_query", async (query) => {
         "phones",
         Number(brandIdxStr),
       );
-      const block = brandFiltered.find((m) => getPhoneGroupKey(m) === groupKey);
-      const messages = block ? [renumberBlock(block)] : [];
+      const blocks = brandFiltered.filter((m) => getPhoneGroupKey(m) === groupKey);
+      const messages = blocks.map((b) => renumberBlock(b));
 
       if (messages.length === 0) {
         await bot.sendMessage(
@@ -757,9 +755,11 @@ bot.on("callback_query", async (query) => {
         return;
       }
 
+      const matchCount =
+        messages.matchCount != null ? messages.matchCount : messages.length;
       await bot.sendMessage(
         userId,
-        `🚨 [${selectedMode.toUpperCase()}] ${messages.length} համընկնում (💻 Notebooks - ${sectionLabel} - Core/Ryzen ${cpuGroup})`,
+        `🚨 [${selectedMode.toUpperCase()}] ${matchCount} համընկնում (💻 Notebooks - ${sectionLabel} - Core/Ryzen ${cpuGroup})`,
         USER_KEYBOARD,
       );
       await sendAlerts(messages, userId);
@@ -793,9 +793,11 @@ bot.on("callback_query", async (query) => {
         return;
       }
 
+      const matchCount =
+        messages.matchCount != null ? messages.matchCount : messages.length;
       await bot.sendMessage(
         userId,
-        `🚨 [${selectedMode.toUpperCase()}] ${messages.length} համընկնում (💻 Notebooks - 🏷️ ${brand} - Core/Ryzen ${cpuGroup})`,
+        `🚨 [${selectedMode.toUpperCase()}] ${matchCount} համընկնում (💻 Notebooks - 🏷️ ${brand} - Core/Ryzen ${cpuGroup})`,
         USER_KEYBOARD,
       );
       await sendAlerts(messages, userId);
@@ -848,7 +850,7 @@ bot.on("callback_query", async (query) => {
       const categoryMessages = result[categoryKey] || [];
 
       const brandFiltered =
-        action === "brand" && brandIndex != null
+        (action === "brand" || action === "suball") && brandIndex != null
           ? filterMessagesByBrand(categoryMessages, categoryKey, brandIndex)
           : categoryMessages;
 

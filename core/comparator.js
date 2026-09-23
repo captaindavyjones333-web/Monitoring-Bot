@@ -1310,6 +1310,7 @@ export const PHONE_SUBGROUP_LABELS = {
   "2_xiaomi_redmi": "Redmi",
   "2_xiaomi_other": "Xiaomi",
   "3_google_pixel": "Google Pixel",
+  "5_other": "Այլ",
 };
 
 export function getPhoneSubgroupLabel(groupKey) {
@@ -1399,7 +1400,7 @@ export function getPhoneGroupKey(message) {
     if (name.includes(b)) return `4_brand_${b}`;
   }
 
-  return `5_other_${name.split("\n")[0]}`;
+  return "5_other";
 }
 
 const DYSON_SERIES_CODE_REGEX = /\bH([DST])[- ]?\d{2}\b/i;
@@ -1425,21 +1426,41 @@ export function getDysonSubgroupLabel(groupKey) {
   return labels[groupKey] || groupKey;
 }
 
-export function groupPhoneAlerts(phoneMessages) {
-  const groups = new Map();
-
+export function groupPhoneAlerts(phoneMessages, rsOnlyItems = []) {
+  const normalGrouped = new Map();
   for (const msg of phoneMessages) {
     const groupKey = getPhoneGroupKey(msg);
-    if (!groups.has(groupKey)) groups.set(groupKey, []);
-    groups.get(groupKey).push(msg);
+    if (!normalGrouped.has(groupKey)) normalGrouped.set(groupKey, []);
+    normalGrouped.get(groupKey).push(msg);
   }
+
+  const rsOnlyGrouped = new Map();
+  for (const item of rsOnlyItems) {
+    const text = typeof item === "string" ? item : item.text;
+    const groupKey = getPhoneGroupKey(text);
+    if (!rsOnlyGrouped.has(groupKey)) rsOnlyGrouped.set(groupKey, []);
+    rsOnlyGrouped.get(groupKey).push(text);
+  }
+
+  const allKeys = new Set([...normalGrouped.keys(), ...rsOnlyGrouped.keys()]);
+  const sortedKeys = Array.from(allKeys).sort((a, b) => a.localeCompare(b));
 
   const resultMessages = [];
   let counter = 0;
 
-  for (const [groupKey, msgs] of groups) {
-    const numbered = msgs.map((m) => `${++counter}. ${m.trim()}`).join("\n\n");
-    resultMessages.push(numbered);
+  for (const groupKey of sortedKeys) {
+    const normalMsgs = normalGrouped.get(groupKey) || [];
+    if (normalMsgs.length > 0) {
+      const numbered = normalMsgs.map((m) => `${++counter}. ${m.trim()}`).join("\n\n");
+      resultMessages.push(numbered);
+    }
+
+    const rsItems = rsOnlyGrouped.get(groupKey) || [];
+    if (rsItems.length > 0) {
+      let rsCounter = 0;
+      const rsNumbered = rsItems.map((m) => `${++rsCounter}. ${m.trim()}`).join("\n\n");
+      resultMessages.push(rsNumbered);
+    }
   }
 
   return resultMessages;
@@ -1584,6 +1605,13 @@ function getBrandGroupKey(category, message) {
     return "other";
   }
 
+  if (category === "macbooks") {
+    if (/neo/i.test(name)) return "macbook neo";
+    if (/air/i.test(name)) return "macbook air";
+    if (/pro/i.test(name)) return "macbook pro";
+    return "other";
+  }
+
   if (category === "dyson") {
     return "dyson";
   }
@@ -1591,13 +1619,60 @@ function getBrandGroupKey(category, message) {
   return "other";
 }
 
-export function groupCategoryAlertsByBrand(category, messages) {
-  const grouped = new Map();
+export function groupDysonAlerts(dysonMessages, rsOnlyItems = []) {
+  const normalGrouped = new Map();
+  for (const msg of dysonMessages) {
+    const key = getDysonGroupKey(msg);
+    if (!normalGrouped.has(key)) normalGrouped.set(key, []);
+    normalGrouped.get(key).push(msg);
+  }
 
+  const rsOnlyGrouped = new Map();
+  for (const item of rsOnlyItems) {
+    const text = typeof item === "string" ? item : item.text;
+    const key = getDysonGroupKey(text);
+    if (!rsOnlyGrouped.has(key)) rsOnlyGrouped.set(key, []);
+    rsOnlyGrouped.get(key).push(text);
+  }
+
+  const allKeys = new Set([...normalGrouped.keys(), ...rsOnlyGrouped.keys()]);
+  const sortedKeys = Array.from(allKeys).sort((a, b) => a.localeCompare(b));
+
+  const resultMessages = [];
+  let counter = 0;
+
+  for (const key of sortedKeys) {
+    const normalMsgs = normalGrouped.get(key) || [];
+    if (normalMsgs.length > 0) {
+      const numbered = normalMsgs.map((m) => `${++counter}. ${m.trim()}`).join("\n\n");
+      resultMessages.push(numbered);
+    }
+
+    const rsItems = rsOnlyGrouped.get(key) || [];
+    if (rsItems.length > 0) {
+      let rsCounter = 0;
+      const rsNumbered = rsItems.map((m) => `${++rsCounter}. ${m.trim()}`).join("\n\n");
+      resultMessages.push(rsNumbered);
+    }
+  }
+
+  return resultMessages;
+}
+
+export function groupCategoryAlertsByBrand(category, messages, rsOnlyItems = []) {
+  const normalGrouped = new Map();
   for (const msg of messages) {
     const key = getBrandGroupKey(category, msg);
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push(msg);
+    if (!normalGrouped.has(key)) normalGrouped.set(key, []);
+    normalGrouped.get(key).push(msg);
+  }
+
+  const rsOnlyGrouped = new Map();
+  for (const item of rsOnlyItems) {
+    const text = typeof item === "string" ? item : item.text;
+    const key = getBrandGroupKey(category, text);
+    if (!rsOnlyGrouped.has(key)) rsOnlyGrouped.set(key, []);
+    rsOnlyGrouped.get(key).push(text);
   }
 
   const order = {
@@ -1670,10 +1745,12 @@ export function groupCategoryAlertsByBrand(category, messages) {
     monitors: ["samsung", "lg", "dell", "hp", "asus", "acer", "benq", "viewsonic", "philips", "msi", "other"],
     projectors: ["epson", "benq", "xgimi", "wanbo", "optoma", "other"],
     drones: ["dji", "autel", "other"],
+    macbooks: ["macbook neo", "macbook air", "macbook pro", "other"],
     dyson: ["dyson"],
   }[category];
 
-  const sortedKeys = Array.from(grouped.keys()).sort((a, b) => {
+  const allKeys = new Set([...normalGrouped.keys(), ...rsOnlyGrouped.keys()]);
+  const sortedKeys = Array.from(allKeys).sort((a, b) => {
     if (!order) return a.localeCompare(b);
     const ai = order.indexOf(a);
     const bi = order.indexOf(b);
@@ -1689,15 +1766,46 @@ export function groupCategoryAlertsByBrand(category, messages) {
   let counter = 0;
 
   for (const key of sortedKeys) {
-    const msgs = grouped.get(key);
-    const numbered = msgs.map((m) => `${++counter}. ${m.trim()}`).join("\n\n");
-    resultMessages.push(numbered);
+    const normalMsgs = normalGrouped.get(key) || [];
+    if (normalMsgs.length > 0) {
+      const numbered = normalMsgs.map((m) => `${++counter}. ${m.trim()}`).join("\n\n");
+      resultMessages.push(numbered);
+    }
+
+    const rsItems = rsOnlyGrouped.get(key) || [];
+    if (rsItems.length > 0) {
+      let rsCounter = 0;
+      const rsNumbered = rsItems.map((m) => `${++rsCounter}. ${m.trim()}`).join("\n\n");
+      resultMessages.push(rsNumbered);
+    }
   }
 
   return resultMessages;
 }
 
-export function splitAlertsByCategory(comparisons) {
+export function extractRsOnlyFromGroups(groups) {
+  const rsOnly = [];
+  const fmt = (n) =>
+    n != null ? n.toLocaleString("ru-RU").replace(/,/g, " ") : "—";
+
+  for (const [key, group] of groups) {
+    const rs = group.sources?.["redstore"];
+    if (!rs) continue;
+    const hasComp = Object.keys(group.sources).some(
+      (s) => s !== "redstore" && group.sources[s],
+    );
+    if (!hasComp) {
+      const name = (rs.name || group.canonicalTitle || "").replace(/\s+/g, " ").trim();
+      const cash = rs.cash_price;
+      const effectiveInst = rs.installment_price || cash;
+      const text = `*${name}*\nRS - ${fmt(cash)} - ${fmt(effectiveInst)} ❌`;
+      rsOnly.push({ name, text });
+    }
+  }
+  return rsOnly;
+}
+
+export function splitAlertsByCategory(comparisons, rsOnlyByCategory = {}) {
   const alerts = comparisons.filter((c) => c.hasAlert);
 
   alerts.sort((a, b) =>
@@ -1731,25 +1839,26 @@ export function splitAlertsByCategory(comparisons) {
   }
 
   return {
-    phones: groupPhoneAlerts(buckets.phones),
-    tablets: groupCategoryAlertsByBrand("tablets", buckets.tablets),
-    watches: groupCategoryAlertsByBrand("watches", buckets.watches),
-    headphones: groupCategoryAlertsByBrand("headphones", buckets.headphones),
-    macbooks: buckets.macbooks.map((msg, i) => `${i + 1}. ${msg}`),
-    speakers: groupCategoryAlertsByBrand("speakers", buckets.speakers),
-    tvs: groupCategoryAlertsByBrand("tvs", buckets.tvs),
-    dyson: buckets.dyson.map((msg, i) => `${i + 1}. ${msg}`),
-    gaming: groupCategoryAlertsByBrand("gaming", buckets.gaming),
+    phones: groupPhoneAlerts(buckets.phones, rsOnlyByCategory.phones || []),
+    tablets: groupCategoryAlertsByBrand("tablets", buckets.tablets, rsOnlyByCategory.tablets || []),
+    watches: groupCategoryAlertsByBrand("watches", buckets.watches, rsOnlyByCategory.watches || []),
+    headphones: groupCategoryAlertsByBrand("headphones", buckets.headphones, rsOnlyByCategory.headphones || []),
+    macbooks: groupCategoryAlertsByBrand("macbooks", buckets.macbooks, rsOnlyByCategory.macbooks || []),
+    speakers: groupCategoryAlertsByBrand("speakers", buckets.speakers, rsOnlyByCategory.speakers || []),
+    tvs: groupCategoryAlertsByBrand("tvs", buckets.tvs, rsOnlyByCategory.tvs || []),
+    dyson: groupDysonAlerts(buckets.dyson, rsOnlyByCategory.dyson || []),
+    gaming: groupCategoryAlertsByBrand("gaming", buckets.gaming, rsOnlyByCategory.gaming || []),
     airconditioners: groupCategoryAlertsByBrand(
       "airconditioners",
       buckets.airconditioners,
+      rsOnlyByCategory.airconditioners || [],
     ),
-    camera: groupCategoryAlertsByBrand("camera", buckets.camera),
-    cleaners: groupCategoryAlertsByBrand("cleaners", buckets.cleaners),
-    printers: groupCategoryAlertsByBrand("printers", buckets.printers),
-    monitors: groupCategoryAlertsByBrand("monitors", buckets.monitors),
-    projectors: groupCategoryAlertsByBrand("projectors", buckets.projectors),
-    drones: groupCategoryAlertsByBrand("drones", buckets.drones),
+    camera: groupCategoryAlertsByBrand("camera", buckets.camera, rsOnlyByCategory.camera || []),
+    cleaners: groupCategoryAlertsByBrand("cleaners", buckets.cleaners, rsOnlyByCategory.cleaners || []),
+    printers: groupCategoryAlertsByBrand("printers", buckets.printers, rsOnlyByCategory.printers || []),
+    monitors: groupCategoryAlertsByBrand("monitors", buckets.monitors, rsOnlyByCategory.monitors || []),
+    projectors: groupCategoryAlertsByBrand("projectors", buckets.projectors, rsOnlyByCategory.projectors || []),
+    drones: groupCategoryAlertsByBrand("drones", buckets.drones, rsOnlyByCategory.drones || []),
   };
 }
 
@@ -1813,23 +1922,51 @@ export function runComparison(allProducts) {
     (byCategory[cat] || byCategory.phones).push(p);
   }
 
+  const rsOnlyByCategory = {
+    phones: [],
+    tablets: [],
+    watches: [],
+    headphones: [],
+    speakers: [],
+    camera: [],
+    cleaners: [],
+    printers: [],
+    monitors: [],
+    projectors: [],
+    drones: [],
+    macbooks: [],
+    tvs: [],
+    dyson: [],
+    gaming: [],
+    airconditioners: [],
+  };
+
   let otherComparisons = [];
   for (const [cat, products] of Object.entries(byCategory)) {
     const groups = groupByNormalizedName(products);
     otherComparisons = otherComparisons.concat(buildComparisons(groups, cat));
+    rsOnlyByCategory[cat] = extractRsOnlyFromGroups(groups);
   }
 
-  const macbookComparisons = buildMacbookComparisons(
-    groupMacbooksByCode(macbookProducts),
-  );
-  const tvComparisons = buildTvComparisons(groupTvsByCode(tvProducts));
-  const dysonComparisons = buildDysonComparisons(
-    groupDysonByKey(dysonProducts),
-  );
-  const gamingComparisons = buildGamingComparisons(
-    groupGamingByName(gamingProducts),
-  );
-  const acComparisons = buildACComparisons(groupACsByCode(acProducts));
+  const macbookGroups = groupMacbooksByCode(macbookProducts);
+  const macbookComparisons = buildMacbookComparisons(macbookGroups);
+  rsOnlyByCategory.macbooks = extractRsOnlyFromGroups(macbookGroups);
+
+  const tvGroups = groupTvsByCode(tvProducts);
+  const tvComparisons = buildTvComparisons(tvGroups);
+  rsOnlyByCategory.tvs = extractRsOnlyFromGroups(tvGroups);
+
+  const dysonGroups = groupDysonByKey(dysonProducts);
+  const dysonComparisons = buildDysonComparisons(dysonGroups);
+  rsOnlyByCategory.dyson = extractRsOnlyFromGroups(dysonGroups);
+
+  const gamingGroups = groupGamingByName(gamingProducts);
+  const gamingComparisons = buildGamingComparisons(gamingGroups);
+  rsOnlyByCategory.gaming = extractRsOnlyFromGroups(gamingGroups);
+
+  const acGroups = groupACsByCode(acProducts);
+  const acComparisons = buildACComparisons(acGroups);
+  rsOnlyByCategory.airconditioners = extractRsOnlyFromGroups(acGroups);
 
   const allComparisons = [
     ...otherComparisons,
@@ -1839,5 +1976,5 @@ export function runComparison(allProducts) {
     ...gamingComparisons,
     ...acComparisons,
   ];
-  return splitAlertsByCategory(allComparisons);
+  return splitAlertsByCategory(allComparisons, rsOnlyByCategory);
 }

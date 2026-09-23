@@ -1,9 +1,13 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { canonicalizeCpuRegex } from "./ai/normalizeCpuRegex.js";
+import { canonicalizeGpuRegex } from "./ai/normalizeGpuRegex.js";
+import { extractCpuTierGroup, isGamingGpu } from "./cpuGroup.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MATCHES_FILE = path.resolve(__dirname, "../cache/notebooks/matches-v2.json");
+const REDSTORE_NOTEBOOKS_FILE = path.resolve(__dirname, "../cache/notebooks/redstore.json");
 
 function parsePrice(priceStr) {
   if (!priceStr) return { cash: null, installment: null };
@@ -236,81 +240,236 @@ export function getAvailableNotebookSameBrandCpuGroups(brand) {
   return Array.from(groups).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
-/**
- * Builds formatted comparison messages from a list of matches,
- * grouping all competitor matches under the same Redstore product.
- */
-export function formatNotebookMatches(matches) {
-  // Map<rsKey, { rs: a, competitors: Map<compPairKey, b> }>
-  const grouped = new Map();
+export function loadRsOnlyNotebooks() {
+  if (!fs.existsSync(REDSTORE_NOTEBOOKS_FILE)) return [];
+  try {
+    const rsProducts = JSON.parse(fs.readFileSync(REDSTORE_NOTEBOOKS_FILE, "utf-8"));
+    const allMatches = loadAllMatches();
+    const matchedKeys = new Set();
+    for (const m of allMatches) {
+      if (m.a?.url) matchedKeys.add(String(m.a.url).trim());
+      if (m.a?.name) matchedKeys.add(String(m.a.name).trim());
+    }
 
-  for (const match of matches) {
-    const a = match.a; // Redstore
-    const b = match.b; // Competitor
-    if (!a || !b) continue;
+    const rsOnly = [];
+    for (const p of rsProducts) {
+      const urlKey = p.url ? String(p.url).trim() : null;
+      const nameKey = p.name ? String(p.name).trim() : null;
+      if (urlKey && matchedKeys.has(urlKey)) continue;
+      if (nameKey && matchedKeys.has(nameKey)) continue;
 
-    const rsKey = (a.url && String(a.url).trim()) || String(a.name).trim();
+      const cpu = canonicalizeCpuRegex(p.specs?.cpu)?.canonical ?? null;
+      const gpu = canonicalizeGpuRegex(p.specs?.gpu)?.canonical ?? null;
+      const cpuTier = extractCpuTierGroup(cpu);
+      const isGaming = isGamingGpu(gpu);
+      const brand = p.brand ? String(p.brand).trim().toUpperCase() : null;
 
-    if (!grouped.has(rsKey)) {
-      grouped.set(rsKey, {
-        rs: a,
-        competitors: new Map(),
+      const cash = p.price != null ? Number(p.price) : null;
+      const inst = p.installment_price != null ? Number(p.installment_price) : cash;
+      const fmt = (n) =>
+        n != null ? n.toLocaleString("ru-RU").replace(/,/g, " ") : "—";
+      const displayName = (p.name || "").replace(/\s+/g, " ").trim();
+      const text = `*Redstore: ${displayName}*\nRS - ${fmt(cash)} - ${fmt(inst)} ❌`;
+
+      rsOnly.push({
+        name: displayName,
+        text,
+        cpu_group: cpuTier ? String(cpuTier) : null,
+        brand,
+        is_gaming: isGaming,
       });
     }
+    return rsOnly;
+  } catch (err) {
+    console.error("[notebookComparator] ❌ Failed to load RS-only notebooks:", err.message);
+    return [];
+  }
+}
 
-    const compPairKey = `${b.store}|${(b.url && String(b.url).trim()) || String(b.name).trim()}`;
-    const group = grouped.get(rsKey);
-    if (!group.competitors.has(compPairKey)) {
-      group.competitors.set(compPairKey, b);
+export function filterRsOnlyNotebooks(rsOnlyList, section = "all", brand = null, cpuGroup = null) {
+  return rsOnlyList.filter((item) => {
+    if (section === "gaming" && item.is_gaming !== true) return false;
+    if ((section === "standard" || section === "non_gaming") && item.is_gaming !== false) return false;
+    if (brand && item.brand !== String(brand).trim().toUpperCase()) return false;
+    if (cpuGroup && item.cpu_group !== String(cpuGroup)) return false;
+    return true;
+  });
+}
+
+/**
+ * Builds formatted comparison messages from a list of matches:
+ * - RS: includes ALL matching RS models in the comparison.
+ * - Competitors: includes only the CHEAPEST matching model per competitor store.
+ * - Grouped by existing processor groups (Core 3/i3/Ryzen 3, Core 5..., Core 7..., Core 9...).
+ * - All comparisons belonging to the same processor group are included in ONE Telegram message.
+ * - After normal comparisons, includes one additional message for RS-only models of that group.
+ */
+export function formatNotebookMatches(matches, rsOnlyNotebooks = []) {
+  const adj = new Map();
+  function addEdge(u, v) {
+    if (!adj.has(u)) adj.set(u, new Set());
+    if (!adj.has(v)) adj.set(v, new Set());
+    adj.get(u).add(v);
+    adj.get(v).add(u);
+  }
+
+  const rsMap = new Map();
+  const compMap = new Map();
+  const matchCpuGroupMap = new Map();
+
+  for (const m of matches) {
+    if (!m.a || !m.b) continue;
+    const rsKey = `RS::${(m.a.url && String(m.a.url).trim()) || String(m.a.name).trim()}`;
+    const compKey = `COMP::${m.b.store}::${(m.b.url && String(m.b.url).trim()) || String(m.b.name).trim()}`;
+    rsMap.set(rsKey, m.a);
+    compMap.set(compKey, m.b);
+    addEdge(rsKey, compKey);
+    if (m.cpu_group) {
+      matchCpuGroupMap.set(rsKey, String(m.cpu_group));
+      matchCpuGroupMap.set(compKey, String(m.cpu_group));
     }
   }
 
-  const results = [];
+  const visited = new Set();
+  const comparisonsByCpuGroup = new Map();
+  let totalComparisonsCount = 0;
 
-  for (const { rs, competitors } of grouped.values()) {
-    const compList = Array.from(competitors.values());
-    if (compList.length === 0) continue;
+  for (const node of adj.keys()) {
+    if (visited.has(node)) continue;
+    const comp = { rs: [], competitors: [], cpu_group: null };
+    const queue = [node];
+    visited.add(node);
 
-    const rsPrices = parsePrice(rs.price);
-    const competitorPrices = compList.map((b) => parsePrice(b.price));
-
-    const rsLine = formatRsLine(rsPrices.cash, rsPrices.installment, competitorPrices);
-    const rsName = rs.name.trim();
-
-    const lines = [`*Redstore: ${rsName}*\n${rsLine}`];
-
-    for (let i = 0; i < compList.length; i++) {
-      const b = compList[i];
-      const compPrices = competitorPrices[i];
-      const compLine = formatCompLine(
-        rsPrices.cash,
-        rsPrices.installment,
-        compPrices.cash,
-        compPrices.installment,
-        b.store
-      );
-      const compName = b.name.trim();
-      const compTitle = getStoreTitle(b.store);
-
-      lines.push(`*${compTitle}: ${compName}*\n${compLine}`);
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      if (curr.startsWith("RS::")) {
+        comp.rs.push(rsMap.get(curr));
+      } else {
+        comp.competitors.push(compMap.get(curr));
+      }
+      if (!comp.cpu_group && matchCpuGroupMap.has(curr)) {
+        comp.cpu_group = matchCpuGroupMap.get(curr);
+      }
+      for (const n of adj.get(curr)) {
+        if (!visited.has(n)) {
+          visited.add(n);
+          queue.push(n);
+        }
+      }
     }
 
-    results.push(lines.join("\n\n"));
+    if (comp.rs.length === 0 || comp.competitors.length === 0) continue;
+
+    // Requirement 3:
+    // RS: include ALL matching RS models
+    // Competitor stores: if multiple matching models exist, include only the cheapest matching model from that store
+    const compsByStore = new Map();
+    for (const b of comp.competitors) {
+      const storeKey = (b.store || "unknown").toLowerCase();
+      const prices = parsePrice(b.price);
+      const cash = prices.cash ?? Infinity;
+      if (!compsByStore.has(storeKey) || cash < (compsByStore.get(storeKey).cash ?? Infinity)) {
+        compsByStore.set(storeKey, { b, prices, cash });
+      }
+    }
+
+    const selectedComps = Array.from(compsByStore.values());
+    const competitorPrices = selectedComps.map((x) => x.prices);
+
+    let minRsCash = Infinity;
+    let minRsInst = Infinity;
+    for (const a of comp.rs) {
+      const p = parsePrice(a.price);
+      if (p.cash && p.cash < minRsCash) minRsCash = p.cash;
+      const inst = p.installment || p.cash;
+      if (inst && inst < minRsInst) minRsInst = inst;
+    }
+    if (minRsCash === Infinity) minRsCash = null;
+    if (minRsInst === Infinity) minRsInst = null;
+
+    const lines = [];
+    for (const a of comp.rs) {
+      const p = parsePrice(a.price);
+      const rsLine = formatRsLine(p.cash, p.installment, competitorPrices);
+      lines.push(`*Redstore: ${a.name.trim()}*\n${rsLine}`);
+    }
+
+    for (const { b, prices } of selectedComps) {
+      const compLine = formatCompLine(minRsCash, minRsInst, prices.cash, prices.installment, b.store);
+      lines.push(`*${getStoreTitle(b.store)}: ${b.name.trim()}*\n${compLine}`);
+    }
+
+    const groupKey = comp.cpu_group || "other";
+    if (!comparisonsByCpuGroup.has(groupKey)) {
+      comparisonsByCpuGroup.set(groupKey, []);
+    }
+    comparisonsByCpuGroup.get(groupKey).push(lines.join("\n\n"));
+    totalComparisonsCount++;
   }
 
-  return results.map((msg, i) => `${i + 1}. ${msg}`);
+  // RS-only notebooks grouped by cpu_group
+  const rsOnlyByCpuGroup = new Map();
+  for (const item of rsOnlyNotebooks) {
+    const groupKey = item.cpu_group || "other";
+    if (!rsOnlyByCpuGroup.has(groupKey)) rsOnlyByCpuGroup.set(groupKey, []);
+    rsOnlyByCpuGroup.get(groupKey).push(item.text);
+  }
+
+  // Existing processor groups order: 3, 5, 7, 9, other
+  const standardOrder = ["3", "5", "7", "9", "other"];
+  const allCpuGroups = new Set([
+    ...comparisonsByCpuGroup.keys(),
+    ...rsOnlyByCpuGroup.keys(),
+  ]);
+  const sortedCpuGroups = Array.from(allCpuGroups).sort((a, b) => {
+    const ai = standardOrder.indexOf(a);
+    const bi = standardOrder.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  const finalMessages = [];
+
+  for (const groupKey of sortedCpuGroups) {
+    const normalBlocks = comparisonsByCpuGroup.get(groupKey) || [];
+    if (normalBlocks.length > 0) {
+      // Requirement 2: All notebook comparisons belonging to the same existing processor group
+      // should be included in ONE Telegram message.
+      const normalMsg = normalBlocks
+        .map((block, i) => `${i + 1}. ${block}`)
+        .join("\n\n");
+      finalMessages.push(normalMsg);
+    }
+
+    const rsItems = rsOnlyByCpuGroup.get(groupKey) || [];
+    if (rsItems.length > 0) {
+      // Requirement 1: After normal comparisons are sent, send one additional message
+      // containing all RS-only models for that group.
+      const rsMsg = rsItems
+        .map((text, i) => `${i + 1}. ${text}`)
+        .join("\n\n");
+      finalMessages.push(rsMsg);
+    }
+  }
+
+  finalMessages.matchCount = totalComparisonsCount;
+  return finalMessages;
 }
 
 export function buildNotebookComparisons(filter = "all") {
   const matches = getNotebookMatchesBySection(filter);
-  return formatNotebookMatches(matches);
+  const rsOnly = filterRsOnlyNotebooks(loadRsOnlyNotebooks(), filter);
+  return formatNotebookMatches(matches, rsOnly);
 }
 
 export function buildNotebookSectionCpuComparisons(section, cpuGroup) {
   const matches = getNotebookMatchesBySection(section).filter(
     (m) => String(m.cpu_group) === String(cpuGroup)
   );
-  return formatNotebookMatches(matches);
+  const rsOnly = filterRsOnlyNotebooks(loadRsOnlyNotebooks(), section, null, cpuGroup);
+  return formatNotebookMatches(matches, rsOnly);
 }
 
 export function buildNotebookSameBrandCpuComparisons(brand, cpuGroup) {
@@ -320,6 +479,7 @@ export function buildNotebookSameBrandCpuComparisons(brand, cpuGroup) {
       String(m.brand).trim().toUpperCase() === normalizedBrand &&
       String(m.cpu_group) === String(cpuGroup)
   );
-  return formatNotebookMatches(matches);
+  const rsOnly = filterRsOnlyNotebooks(loadRsOnlyNotebooks(), "same_brand", normalizedBrand, cpuGroup);
+  return formatNotebookMatches(matches, rsOnly);
 }
 

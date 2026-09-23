@@ -77,23 +77,17 @@ export function startScheduler(bot, getApprovedUserIds) {
   }
 
   // 09:10 AM Yerevan
-  cron.schedule(
-    "10 9 * * *",
-    () => runPriceWatch("09:10"),
-    { timezone: "Asia/Yerevan" },
-  );
+  cron.schedule("10 9 * * *", () => runPriceWatch("09:10"), {
+    timezone: "Asia/Yerevan",
+  });
 
   // 13:30 PM Yerevan
-  cron.schedule(
-    "30 13 * * *",
-    () => runPriceWatch("13:30"),
-    { timezone: "Asia/Yerevan" },
-  );
+  cron.schedule("30 13 * * *", () => runPriceWatch("13:30"), {
+    timezone: "Asia/Yerevan",
+  });
 
   // 15:42 PM Yerevan (for real test)
-  // cron.schedule(
-  //   "42 15 * * *",
-  //   () => runPriceWatch("15:42"),
-  //   { timezone: "Asia/Yerevan" },
-  // );
+  cron.schedule("10 16 * * *", () => runPriceWatch("16:10"), {
+    timezone: "Asia/Yerevan",
+  });
 }

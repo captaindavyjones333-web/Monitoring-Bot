@@ -4,7 +4,7 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 puppeteerExtra.use(StealthPlugin());
 
 const BASE_URL = "https://www.zigzag.am";
-const LIST_URL = "https://www.zigzag.am/am/computers-notebooks-tablets/peripheral-devices/printers.html";
+const LIST_URL = "https://www.zigzag.am/am/computers-notebooks-tablets/peripheral-devices.html";
 
 async function extractListingProducts(page) {
   return page.evaluate(() => {

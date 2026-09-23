@@ -70,7 +70,19 @@ function extractListingProducts($) {
     if (!href) return;
 
     const url = href.startsWith("http") ? href : `${BASE_URL}${href}`;
-    products.push({ name, url });
+
+    const installmentText = $card
+      .find(".credit_price .price")
+      .first()
+      .text()
+      .trim();
+    const rawListingInst = installmentText
+      ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
+      : null;
+    const listingInstallment =
+      rawListingInst && rawListingInst > 0 ? rawListingInst : null;
+
+    products.push({ name, url, listingInstallment });
   });
 
   return products;
@@ -100,7 +112,7 @@ function normalizeSimLabel(label) {
   return label;
 }
 
-function parseSimpleProduct(baseName, html, source, url = null) {
+function parseSimpleProduct(baseName, html, source, url = null, listingInstallment = null) {
   const $ = cheerio.load(html);
   const cashRaw = $("[data-price-type='finalPrice']")
     .first()
@@ -108,10 +120,29 @@ function parseSimpleProduct(baseName, html, source, url = null) {
   const cash_price = cashRaw ? parseInt(cashRaw, 10) : null;
   if (!cash_price) return null;
 
+  let installment_price = null;
   const installmentText = $(".credit_price .price").first().text().trim();
-  const installment_price = installmentText
-    ? parseInt(installmentText.replace(/[^\d]/g, ""), 10) || null
-    : null;
+  if (installmentText) {
+    const parsed = parseInt(installmentText.replace(/[^\d]/g, ""), 10);
+    if (parsed > 0) installment_price = parsed;
+  }
+
+  // Fallback: check embedded JSON / markup in script tags (e.g. studioone_credit_price)
+  if (!installment_price && html) {
+    const match = html.match(/credit_price[\s\S]*?class=\\?["']price\\?["']>([\s\S]*?)<\\?\//i);
+    if (match) {
+      const cleaned = match[1].replace(/&#\d+;?/g, "").replace(/[^\d]/g, "");
+      const parsed = parseInt(cleaned, 10);
+      if (parsed > 0) installment_price = parsed;
+    }
+  }
+
+  // Fallback: use listing page installment price if available
+  if (!installment_price && listingInstallment && listingInstallment > 0) {
+    installment_price = listingInstallment;
+  }
+  installment_price = installment_price || null;
+
   const simText = extractSimFromTable($);
   const simSuffix = getSimSuffixFromText(simText);
   const finalName =
@@ -123,7 +154,7 @@ function parseSimpleProduct(baseName, html, source, url = null) {
 }
 
 async function fetchProductVariants(baseName, url, logTag, opts = {}) {
-  const { isTablet = false } = opts;
+  const { isTablet = false, listingInstallment = null } = opts;
   try {
     const res = await axios.get(url, { headers: HEADERS, timeout: 10000 });
     const html = res.data;
@@ -138,7 +169,9 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
     const priceFormatStart = html.indexOf('"priceFormat"');
 
     if (attrStart === -1 || optionStart === -1 || priceFormatStart === -1) {
-      return [parseSimpleProduct(baseName, html, "allsell", url)].filter(Boolean);
+      return [
+        parseSimpleProduct(baseName, html, "allsell", url, listingInstallment),
+      ].filter(Boolean);
     }
 
     let optionPrices;
@@ -149,7 +182,9 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
         .replace(/,\s*$/, "");
       optionPrices = JSON.parse(jsonStr);
     } catch {
-      return [parseSimpleProduct(baseName, html, "allsell", url)].filter(Boolean);
+      return [
+        parseSimpleProduct(baseName, html, "allsell", url, listingInstallment),
+      ].filter(Boolean);
     }
 
     let attributes;
@@ -171,7 +206,9 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
       jsonStr = jsonStr.slice(0, endIndex);
       attributes = JSON.parse(jsonStr);
     } catch {
-      return [parseSimpleProduct(baseName, html, "allsell", url)].filter(Boolean);
+      return [
+        parseSimpleProduct(baseName, html, "allsell", url, listingInstallment),
+      ].filter(Boolean);
     }
 
     const storageAttr = Object.values(attributes).find(
@@ -183,7 +220,9 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
     );
 
     if (!storageAttr)
-      return [parseSimpleProduct(baseName, html, "allsell", url)].filter(Boolean);
+      return [
+        parseSimpleProduct(baseName, html, "allsell", url, listingInstallment),
+      ].filter(Boolean);
 
     const results = [];
     const isApple =
@@ -205,8 +244,11 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
           );
           if (!productId || !optionPrices[productId]) continue;
           const cash_price = optionPrices[productId].finalPrice?.amount ?? null;
+          const rawCredit =
+            optionPrices[productId].creditPrice?.amount ??
+            optionPrices[productId].creditPrice;
           const installment_price =
-            optionPrices[productId].creditPrice?.amount ?? null;
+            typeof rawCredit === "number" && rawCredit > 0 ? rawCredit : null;
           if (!cash_price) continue;
           results.push({
             name: `${baseName} ${storageLabel} (${simLabel})`,
@@ -229,8 +271,11 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
             if (!productId || !optionPrices[productId]) continue;
             const cash_price =
               optionPrices[productId].finalPrice?.amount ?? null;
+            const rawCredit =
+              optionPrices[productId].creditPrice?.amount ??
+              optionPrices[productId].creditPrice;
             const installment_price =
-              optionPrices[productId].creditPrice?.amount ?? null;
+              typeof rawCredit === "number" && rawCredit > 0 ? rawCredit : null;
             if (!cash_price) continue;
 
             const nameWithSim =
@@ -250,8 +295,11 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
           const productId = storageOption.products[0];
           if (!productId || !optionPrices[productId]) continue;
           const cash_price = optionPrices[productId].finalPrice?.amount ?? null;
+          const rawCredit =
+            optionPrices[productId].creditPrice?.amount ??
+            optionPrices[productId].creditPrice;
           const installment_price =
-            optionPrices[productId].creditPrice?.amount ?? null;
+            typeof rawCredit === "number" && rawCredit > 0 ? rawCredit : null;
           if (!cash_price) continue;
 
           const nameWithSim =
@@ -272,7 +320,9 @@ async function fetchProductVariants(baseName, url, logTag, opts = {}) {
 
     return results.length > 0
       ? results
-      : [parseSimpleProduct(baseName, html, "allsell", url)].filter(Boolean);
+      : [
+          parseSimpleProduct(baseName, html, "allsell", url, listingInstallment),
+        ].filter(Boolean);
   } catch (err) {
     console.warn(`[${logTag}] Failed ${url}: ${err.message}`);
     return [];
@@ -323,14 +373,18 @@ export async function crawlAllsellCategory(categoryUrls, logTag, opts = {}) {
   const allProducts = [];
 
   for (let i = 0; i < unique.length; i++) {
-    const { name: productName, url: productUrl } = unique[i];
+    const {
+      name: productName,
+      url: productUrl,
+      listingInstallment,
+    } = unique[i];
     console.log(`[${logTag}] (${i + 1}/${unique.length}) ${productName}`);
 
     const variants = await fetchProductVariants(
       productName,
       productUrl,
       logTag,
-      opts,
+      { ...opts, listingInstallment },
     );
     console.log(
       `[${logTag}]   -> ${variants.length} variants: ${variants.map((v) => v.name).join(", ")}`,

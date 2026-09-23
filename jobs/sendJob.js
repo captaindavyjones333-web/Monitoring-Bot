@@ -36,12 +36,13 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
     console.error(err.stack);
     throw err;
   }
-  const { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming, airconditioners } = comparisonResult;
   const notebooks = notebookMessages;
+  let result = { ...comparisonResult, notebooks };
 
-  console.log(
-    `[send] 🚨 ${phones.length} phone, ${tablets.length} tablet, ${watches.length} watch, ${headphones.length} headphone, ${macbooks.length} macbook, ${speakers.length} speaker, ${tvs.length} tv, ${dyson.length} dyson, ${gaming.length} gaming, ${airconditioners.length} airconditioner, ${notebooks.length} notebooks`,
-  );
+  const summary = Object.entries(result)
+    .map(([cat, msgs]) => `${(msgs || []).length} ${cat}`)
+    .join(", ");
+  console.log(`[send] 🚨 ${summary}`);
 
   const getKey = (msg) =>
     msg
@@ -49,38 +50,18 @@ export async function runSendJob(clearAfter = false, onlyNew = false) {
       .split("\n")[0]
       .trim();
 
-  let result = { phones, tablets, watches, headphones, macbooks, speakers, tvs, dyson, gaming, airconditioners, notebooks };
-
   if (onlyNew) {
-    result = {
-      phones: phones.filter((m) => !previousAlertKeys.has(getKey(m))),
-      tablets: tablets.filter((m) => !previousAlertKeys.has(getKey(m))),
-      watches: watches.filter((m) => !previousAlertKeys.has(getKey(m))),
-      headphones: headphones.filter((m) => !previousAlertKeys.has(getKey(m))),
-      macbooks: macbooks.filter((m) => !previousAlertKeys.has(getKey(m))),
-      speakers: speakers.filter((m) => !previousAlertKeys.has(getKey(m))),
-      tvs: tvs.filter((m) => !previousAlertKeys.has(getKey(m))),
-      dyson: dyson.filter((m) => !previousAlertKeys.has(getKey(m))),
-      gaming: gaming.filter((m) => !previousAlertKeys.has(getKey(m))),
-      airconditioners: airconditioners.filter((m) => !previousAlertKeys.has(getKey(m))),
-      notebooks: notebooks.filter((m) => !previousAlertKeys.has(getKey(m))),
-    };
+    const filteredResult = {};
+    for (const [cat, msgs] of Object.entries(result)) {
+      filteredResult[cat] = (msgs || []).filter((m) => !previousAlertKeys.has(getKey(m)));
+    }
+    result = filteredResult;
   }
 
   previousAlertKeys = new Set(
-    [
-      ...phones,
-      ...tablets,
-      ...watches,
-      ...headphones,
-      ...macbooks,
-      ...speakers,
-      ...tvs,
-      ...dyson,
-      ...gaming,
-      ...airconditioners,
-      ...notebooks,
-    ].map(getKey),
+    Object.values(result)
+      .flat()
+      .map(getKey),
   );
 
   if (clearAfter) {
