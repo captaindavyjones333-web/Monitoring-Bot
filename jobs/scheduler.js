@@ -4,6 +4,7 @@ import {
   runPriceWatchJob,
   sendCategoryNotificationsWithDelay,
 } from "./priceWatchJob.js";
+import { filterCategoriesByNotificationFrequency } from "../core/categoryNotificationPolicy.js";
 
 export function startScheduler(bot, getApprovedUserIds) {
   // 6:00 AM Yerevan time — scrape every category and run post-scrape pipeline.
@@ -41,35 +42,28 @@ export function startScheduler(bot, getApprovedUserIds) {
       return;
     }
 
-    const { categoriesWithChanges, totalChanges } = result || {};
-
-    if (!categoriesWithChanges || categoriesWithChanges.length === 0) {
-      console.log(`[scheduler] ✅ ${label} — no price changes detected`);
-      for (const userId of userIds) {
-        await bot
-          .sendMessage(userId, `🕐 ${label} — Գնային փոփոխություններ չկան`)
-          .catch(() => {});
-      }
+    const { categoriesWithChanges } = result || {};
+    if (!categoriesWithChanges || categoriesWithChanges.length === 0 || userIds.length === 0) {
       return;
     }
 
-    console.log(
-      `[scheduler] 📊 ${label} — ${totalChanges} changes across ${categoriesWithChanges.length} categories with changes`,
-    );
+    let eligibleCategories;
+    try {
+      eligibleCategories = filterCategoriesByNotificationFrequency(categoriesWithChanges);
+    } catch (err) {
+      console.error(`[scheduler] ❌ ${label} notification frequency check failed:`, err.message);
+      return;
+    }
 
-    for (const userId of userIds) {
-      await bot
-        .sendMessage(
-          userId,
-          `📊 ${label} — ${totalChanges} փոփոխություն (${categoriesWithChanges.length} կատեգորիա)`,
-        )
-        .catch(() => {});
+    if (eligibleCategories.length === 0) {
+      console.log(`[scheduler] ✅ ${label} — category notification limits reached`);
+      return;
     }
 
     await sendCategoryNotificationsWithDelay(
       bot,
       userIds,
-      categoriesWithChanges,
+      eligibleCategories,
       5 * 60 * 1000,
     );
 

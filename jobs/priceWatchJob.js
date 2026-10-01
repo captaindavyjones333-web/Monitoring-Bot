@@ -113,11 +113,8 @@ function formatNotification(change, rsListing, changedAt) {
 
   // ── Header ──────────────────────────────────────────────────────────────
   let headerLine;
-  if (type === "price_up")      headerLine = "🔴 ԳԻՆԸ ԲԱՐՁՐԱՑԵԼ Է";
-  else if (type === "price_down")   headerLine = "🟢 ԳԻՆԸ ԻՋԵԼ Է";
-  else if (type === "appeared")     headerLine = "🟢 ԱՊՐԱՆՔԸ ՀԱՅՏՆՎԵԼ Է";
-  else if (type === "disappeared")  headerLine = "⚫ ԱՊՐԱՆՔԸ ԱՆՀԵՏԱՑԵԼ Է";
-  else                              headerLine = "ℹ️ ՓՈՓՈԽՈՒԹՅՈՒՆ";
+  if (type === "price_up") headerLine = "🔴 ԳԻՆԸ ԲԱՐՁՐԱՑԵԼ Է";
+  else headerLine = "🟢 ԳԻՆԸ ԻՋԵԼ Է";
 
   // ── Date / time ─────────────────────────────────────────────────────────
   const dateStr = changedAt.toLocaleDateString("ru-RU", {
@@ -131,16 +128,8 @@ function formatNotification(change, rsListing, changedAt) {
   const storeFullName = STORE_FULL_NAMES[source] || source;
   let cashPriceLine, instPriceLine;
 
-  if (type === "appeared") {
-    cashPriceLine = `💵 Կանխիկ: ${fmt(currCash)} ֏`;
-    instPriceLine = `💳 Ապառիկ: ${fmt(currInst)} ֏`;
-  } else if (type === "disappeared") {
-    cashPriceLine = `💵 Կանխիկ: ${fmt(prevCash)} ֏ → —`;
-    instPriceLine = `💳 Ապառիկ: ${fmt(prevInst)} ֏ → —`;
-  } else {
-    cashPriceLine = `💵 Կանխիկ: ${fmt(prevCash)} → ${fmt(currCash)} ֏`;
-    instPriceLine = `💳 Ապառիկ: ${fmt(prevInst)} → ${fmt(currInst)} ֏`;
-  }
+  cashPriceLine = `💵 Կանխիկ: ${fmt(prevCash)} → ${fmt(currCash)} ֏`;
+  instPriceLine = `💳 Ապառիկ: ${fmt(prevInst)} → ${fmt(currInst)} ֏`;
 
   // ── Redstore section ─────────────────────────────────────────────────────
   const rsSection = [
@@ -150,7 +139,7 @@ function formatNotification(change, rsListing, changedAt) {
   ].join("\n");
 
   // ── Comparison vs Redstore ───────────────────────────────────────────────
-  const compCash = type === "disappeared" ? prevCash : currCash;
+  const compCash = currCash;
   let compLine = "";
   let deltaLine = "";
 
@@ -165,8 +154,6 @@ function formatNotification(change, rsListing, changedAt) {
       deltaLine = `📈 Թանկացում՝ ${fmt(currCash - prevCash)} ֏`;
     else if (type === "price_down" && prevCash != null)
       deltaLine = `📉 Էժանացում՝ ${fmt(prevCash - currCash)} ֏`;
-    else if (type === "appeared" && currCash != null)
-      deltaLine = `🆕 Հայտնվել է՝ ${fmt(currCash)} ֏`;
   }
 
   const parts = [
@@ -502,7 +489,11 @@ export async function runPriceWatchJob() {
   }
 
   // ── Keep only competitor changes — never notify on Redstore's own price moves ──
-  const competitorChanges = allChanges.filter((c) => c.source !== "redstore");
+  const competitorChanges = allChanges.filter(
+    (change) =>
+      change.source !== "redstore" &&
+      (change.type === "price_up" || change.type === "price_down"),
+  );
   if (competitorChanges.length === 0) {
     console.log("[priceWatch] No competitor changes to report.");
     return {
