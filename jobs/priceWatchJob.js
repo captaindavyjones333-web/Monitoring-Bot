@@ -33,6 +33,25 @@ function getPool() {
 const fmt = (n) =>
   n != null ? n.toLocaleString("ru-RU").replace(/,/g, " ") : "—";
 
+function isBelowPrice(price, referencePrice) {
+  if (price == null || referencePrice == null) return false;
+  const current = Number(price);
+  const reference = Number(referencePrice);
+  return Number.isFinite(current) && Number.isFinite(reference) && current < reference;
+}
+
+export function hasCheaperCurrentPrice(change, rsListing) {
+  const rsCash = rsListing.cash_price;
+  const rsInstallment = rsListing.installment_price ?? rsCash;
+  const competitorCash = change.currCash;
+  const competitorInstallment = change.currInstallment ?? competitorCash;
+
+  return (
+    isBelowPrice(competitorCash, rsCash) ||
+    isBelowPrice(competitorInstallment, rsInstallment)
+  );
+}
+
 /** Full human-readable store names used in notification headers */
 const STORE_FULL_NAMES = {
   redstore: "REDstore",
@@ -576,6 +595,14 @@ export async function runPriceWatchJob() {
       console.log(
         `[priceWatch]   ⏭️  Skipping "${change.name}" (${change.source}) [${cat}]: ` +
         `no active Redstore match`,
+      );
+      continue;
+    }
+
+    if (!hasCheaperCurrentPrice(change, rsListing)) {
+      console.log(
+        `[priceWatch]   ⏭️  Skipping "${change.name}" (${change.source}) [${cat}]: ` +
+        `no current price is below Redstore`,
       );
       continue;
     }

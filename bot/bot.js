@@ -35,11 +35,14 @@ import {
 } from "../core/comparator.js";
 import { searchProducts } from "../core/search.js";
 import { splitTelegramMessage } from "../core/telegram.js";
+import { filterCheaperComparisonMessages } from "../core/affordableComparisons.js";
 import dotenv from "dotenv";
 
 dotenv.config();
 const awaitingSearch = new Set();
 const pendingApprovals = new Map();
+const affordableComparisonsByToken = new Map();
+let affordableComparisonCounter = 0;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USERS_FILE = path.resolve(__dirname, "../data/users.json");
@@ -177,7 +180,7 @@ const CATEGORY_LABEL_TO_KEY = Object.fromEntries(
 
 // ─── Send alerts ──────────────────────────────────────────────────────────────
 
-export async function sendAlerts(messages, targetChatId = CHAT_ID) {
+async function sendComparisonMessages(messages, targetChatId) {
   for (const msg of messages) {
     for (const chunk of splitTelegramMessage(msg)) {
       try {
@@ -187,7 +190,28 @@ export async function sendAlerts(messages, targetChatId = CHAT_ID) {
       }
     }
   }
-  await bot.sendMessage(targetChatId, "—", MAIN_KEYBOARD).catch(() => {});
+}
+
+export async function sendAlerts(messages, targetChatId = CHAT_ID) {
+  const chatId = String(targetChatId);
+  for (const [token, saved] of affordableComparisonsByToken) {
+    if (saved.chatId === chatId) affordableComparisonsByToken.delete(token);
+  }
+
+  const token = `${Date.now().toString(36)}${(++affordableComparisonCounter).toString(36)}`;
+  affordableComparisonsByToken.set(token, {
+    chatId,
+    messages: filterCheaperComparisonMessages(messages),
+  });
+
+  await sendComparisonMessages(messages, chatId);
+  await bot
+    .sendMessage(chatId, "—", {
+      reply_markup: {
+        inline_keyboard: [[{ text: "Մատչելիները", callback_data: `affordable|${token}` }]],
+      },
+    })
+    .catch(() => {});
 }
 
 // ─── Renumber block utility ─────────────────────────────────────────────────────
@@ -393,6 +417,19 @@ bot.on("callback_query", async (query) => {
 
   if (!isApproved(userId)) {
     await bot.sendMessage(userId, "⛔ Դուք հասանելիություն չունեք:");
+    return;
+  }
+
+  if (data.startsWith("affordable|")) {
+    const token = data.slice("affordable|".length);
+    const saved = affordableComparisonsByToken.get(token);
+    if (!saved || saved.chatId !== userId) {
+      await bot.sendMessage(userId, "Այս համեմատությունն այլևս հասանելի չէ:");
+    } else if (saved.messages.length === 0) {
+      await bot.sendMessage(userId, "Մատչելի առաջարկներ չեն գտնվել:");
+    } else {
+      await sendComparisonMessages(saved.messages, userId);
+    }
     return;
   }
 

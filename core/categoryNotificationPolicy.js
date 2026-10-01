@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_FILE = path.resolve(__dirname, "../data/category_notification_state.json");
-const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 const DAILY_CATEGORIES = new Set(["tablets", "headphones", "watches", "macbooks"]);
 
 function yerevanDate(date) {
@@ -50,7 +50,7 @@ export function selectEligibleCategories(categories, state = {}, now = new Date(
       nextState.dailyByCategory[key] = date;
     } else {
       const lastSentAt = Date.parse(nextState.lastSentAt[key]);
-      if (Number.isFinite(lastSentAt) && now.getTime() - lastSentAt < THREE_DAYS_MS) {
+      if (Number.isFinite(lastSentAt) && now.getTime() - lastSentAt < TWO_DAYS_MS) {
         continue;
       }
       nextState.lastSentAt[key] = now.toISOString();
