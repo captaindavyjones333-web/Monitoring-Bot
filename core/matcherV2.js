@@ -49,7 +49,7 @@ function prepare(product) {
     _modelTokens: extractModelTokens(product.name),
     _cpu: cpu,
     _gpu: gpu,
-    _cpuTierGroup: extractCpuTierGroup(cpu),
+    _cpuTierGroup: extractCpuTierGroup(cpu, product.specs?.cpu),
     _isGaming: isGamingGpu(gpu),
     _fullKey: {
       brand: normalizeBrand(product.brand),

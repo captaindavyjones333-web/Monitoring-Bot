@@ -7,6 +7,14 @@ const SEP = '\\D{0,3}';
 const MODEL_TAIL = '[A-Z0-9]{0,3}';
 
 const PATTERNS = [
+  // Keep Celeron identifiable as its own comparison group, including N-series SKUs.
+  {
+    name: 'intel_celeron',
+    regex: /\bCeleron\b(?:\D{0,24}?((?:N\d{3,4}|\d{4,5}[A-Z]{0,2}))\b)?/i,
+    build: (m) => `Intel Celeron${m[1] ? ' ' + m[1].toUpperCase() : ''}`,
+    confidence: 'high',
+  },
+
   // Apple M-series: "M4", "M3 Pro", "M2 Max", "M1 Ultra"
   {
     name: 'apple',
@@ -45,6 +53,14 @@ const PATTERNS = [
     name: 'intel_core_no_i',
     regex: new RegExp(`\\bCore\\s*([3579])${SEP}(N?\\d{2,3}${MODEL_TAIL})\\b`, 'i'),
     build: (m) => `Intel Core ${m[1]}-${m[2].toUpperCase()}`,
+    confidence: 'high',
+  },
+
+  // The Core i3-N305 is a real Core-branded N-series SKU, not a bare N chip.
+  {
+    name: 'intel_core_i3_n305',
+    regex: new RegExp(`\\bCore\\s*i3${SEP}(N305)\\b`, 'i'),
+    build: (m) => `Intel Core i3-${m[1].toUpperCase()}`,
     confidence: 'high',
   },
 

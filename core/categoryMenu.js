@@ -392,7 +392,7 @@ export function buildNotebookCpuGroupMenu(mode = "cache", section = "gaming", av
   const buttons = [modeSelectorRow];
 
   const groupButtons = availableCpuGroups.map((groupKey) => ({
-    text: `Core / Ryzen ${groupKey}`,
+    text: groupKey === "celeron" ? "Celeron" : `Core / Ryzen ${groupKey}`,
     callback_data: `cat|${mode}|notebooks|sub|${section}|${groupKey}`,
   }));
 
@@ -458,7 +458,7 @@ export function buildNotebookSameBrandCpuGroupMenu(mode = "cache", brand = "", a
   const buttons = [modeSelectorRow];
 
   const groupButtons = availableCpuGroups.map((groupKey) => ({
-    text: `Core / Ryzen ${groupKey}`,
+    text: groupKey === "celeron" ? "Celeron" : `Core / Ryzen ${groupKey}`,
     callback_data: `cat|${mode}|notebooks|sb_exec|${brand}|${groupKey}`,
   }));
 

@@ -11,8 +11,9 @@
  * this i3/i5/i7/i9-style tiering — they return null and simply won't
  * participate in group matching.
  */
-export function extractCpuTierGroup(canonicalCpu) {
+export function extractCpuTierGroup(canonicalCpu, cpuTitle = canonicalCpu) {
   if (!canonicalCpu) return null;
+  if (/\bCeleron\b/i.test(cpuTitle ?? canonicalCpu)) return 'celeron';
 
   let m = canonicalCpu.match(/Ultra\s*([3579])/i);
   if (m) return m[1];

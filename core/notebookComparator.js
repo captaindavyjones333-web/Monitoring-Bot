@@ -206,6 +206,14 @@ export function getAvailableNotebookCpuGroups(section) {
       groups.add(String(m.cpu_group));
     }
   }
+  if (section !== "cross_brand") {
+    const rsOnly = filterRsOnlyNotebooks(loadRsOnlyNotebooks(), section);
+    for (const item of rsOnly) {
+      if (item.cpu_group) {
+        groups.add(String(item.cpu_group));
+      }
+    }
+  }
   return Array.from(groups).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
@@ -237,6 +245,12 @@ export function getAvailableNotebookSameBrandCpuGroups(brand) {
       groups.add(String(m.cpu_group));
     }
   }
+  const rsOnly = filterRsOnlyNotebooks(loadRsOnlyNotebooks(), "same_brand", normalizedBrand);
+  for (const item of rsOnly) {
+    if (item.cpu_group) {
+      groups.add(String(item.cpu_group));
+    }
+  }
   return Array.from(groups).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
@@ -260,7 +274,7 @@ export function loadRsOnlyNotebooks() {
 
       const cpu = canonicalizeCpuRegex(p.specs?.cpu)?.canonical ?? null;
       const gpu = canonicalizeGpuRegex(p.specs?.gpu)?.canonical ?? null;
-      const cpuTier = extractCpuTierGroup(cpu);
+      const cpuTier = extractCpuTierGroup(cpu, p.specs?.cpu);
       const isGaming = isGamingGpu(gpu);
       const brand = p.brand ? String(p.brand).trim().toUpperCase() : null;
 
