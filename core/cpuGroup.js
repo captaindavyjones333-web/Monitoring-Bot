@@ -13,7 +13,7 @@
  */
 export function extractCpuTierGroup(canonicalCpu, cpuTitle = canonicalCpu) {
   if (!canonicalCpu) return null;
-  if (/\bCeleron\b/i.test(cpuTitle ?? canonicalCpu)) return 'celeron';
+  if (/\bCeleron\b/i.test(cpuTitle ?? canonicalCpu)) return '';
 
   let m = canonicalCpu.match(/Ultra\s*([3579])/i);
   if (m) return m[1];
